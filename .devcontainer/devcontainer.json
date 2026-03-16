@@ -1,0 +1,12 @@
+{
+  "portsAttributes": {
+    "8000": {
+      "visibility": "public",
+      "label": "FastAPI Backend"
+    },
+    "5173": {
+      "visibility": "public",
+      "label": "React Frontend"
+    }
+  }
+}
