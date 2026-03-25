@@ -5,40 +5,6 @@ import World from './world/World'
 
 const API = '/api'
 
-// Per-character voice profiles — rate, pitch, and ordered voice name preferences.
-// Browser picks the first available match. Google voices are most natural.
-const VOICE_PROFILES = {
-  'KRANZ': {
-    rate: 0.82, pitch: 0.72,
-    // Slow, deep, authoritative
-    prefer: ['google uk english male', 'daniel', 'david', 'fred', 'alex'],
-  },
-  'ENG-1': {
-    rate: 1.12, pitch: 1.18,
-    // Fast, nervous, higher pitch
-    prefer: ['google us english', 'samantha', 'karen', 'victoria', 'zira'],
-  },
-  'ENG-2': {
-    rate: 0.88, pitch: 0.95,
-    // Measured, methodical, slightly flat
-    prefer: ['google us english', 'alex', 'daniel', 'fred'],
-  },
-  'ENG-3': {
-    rate: 1.04, pitch: 1.08,
-    // Urgent, stressed, slightly higher
-    prefer: ['google us english', 'tom', 'alex', 'samantha'],
-  },
-  'ENG-4': {
-    rate: 0.84, pitch: 0.82,
-    // Cold, clipped, low and deliberate
-    prefer: ['google uk english male', 'daniel', 'fred', 'alex', 'david'],
-  },
-  'ENG-5': {
-    rate: 0.86, pitch: 1.05,
-    // Warm, calm, softer
-    prefer: ['google uk english female', 'karen', 'moira', 'samantha', 'victoria'],
-  },
-}
 
 const QUICK_PROMPTS = {
   'KRANZ':  ["What's the situation?", "Can we save the crew?", "What are our options?"],
@@ -105,51 +71,52 @@ export default function App() {
     return `T+${h}:${m}:${s}`
   }
 
-  const speak = (text, charName) => {
-    if (!window.speechSynthesis) return
+  const audioRef = useRef(null)
 
-    window.speechSynthesis.cancel()
+  const speak = async (text, charName) => {
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
     setTalkingChar(charName)
 
-    const profile = VOICE_PROFILES[charName] || { rate: 0.95, pitch: 1.0, prefer: [] }
+    try {
+      const res = await fetch(`${API}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character: charName, text }),
+      })
+      if (!res.ok) throw new Error('TTS request failed')
 
-    const doSpeak = () => {
-      const utt = new SpeechSynthesisUtterance(text)
-      const voices = window.speechSynthesis.getVoices()
-      const enVoices = voices.filter(v => v.lang.startsWith('en'))
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
 
-      // Try each preferred name in order — pick first match
-      let chosen = null
-      for (const keyword of profile.prefer) {
-        chosen = enVoices.find(v => v.name.toLowerCase().includes(keyword))
-        if (chosen) break
-      }
-      // Fallback: any English voice
-      if (!chosen) chosen = enVoices[0] || voices[0]
-      if (chosen) utt.voice = chosen
-
-      utt.rate = profile.rate
-      utt.pitch = profile.pitch
-      utt.volume = 1
-
-      utt.onend = () => setTalkingChar(null)
-      utt.onerror = (e) => {
-        console.error('TTS error:', e.error)
+      audio.onended = () => {
         setTalkingChar(null)
+        URL.revokeObjectURL(url)
+        audioRef.current = null
       }
-
-      window.speechSynthesis.speak(utt)
+      audio.onerror = () => {
+        setTalkingChar(null)
+        URL.revokeObjectURL(url)
+        audioRef.current = null
+      }
+      audio.play()
+    } catch (e) {
+      console.error('TTS error:', e)
+      setTalkingChar(null)
     }
+  }
 
-    // Chrome bug: speak() called too soon after cancel() fires onend silently.
-    // Also wait for voices to load if they haven't yet.
-    setTimeout(() => {
-      if (window.speechSynthesis.getVoices().length > 0) {
-        doSpeak()
-      } else {
-        window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true })
-      }
-    }, 150)
+  const stopSpeaking = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    setTalkingChar(null)
   }
 
   const startListening = () => {
@@ -185,8 +152,7 @@ export default function App() {
   }
 
   const handleSelect = (char) => {
-    window.speechSynthesis?.cancel()
-    setTalkingChar(null)
+    stopSpeaking()
     setSelectedChar(char)
     setHistory([])
     setMessage('')
@@ -338,7 +304,7 @@ export default function App() {
             <div style={{ display: 'flex', gap: 6 }}>
               {talkingChar && (
                 <button
-                  onClick={() => { window.speechSynthesis?.cancel(); setTalkingChar(null) }}
+                  onClick={stopSpeaking}
                   title="Stop speaking"
                   style={{
                     background: '#1a0a00', color: '#ff8800',
@@ -349,7 +315,7 @@ export default function App() {
                 >⏹</button>
               )}
               <button
-                onClick={() => { window.speechSynthesis?.cancel(); setTalkingChar(null); setSelectedChar(null) }}
+                onClick={() => { stopSpeaking(); setSelectedChar(null) }}
                 style={{
                   background: 'transparent', color: '#444',
                   border: '1px solid #222', borderRadius: 4,

@@ -1,6 +1,10 @@
 import os
+import io
+import asyncio
+import edge_tts
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from groq import Groq
 
@@ -26,6 +30,9 @@ You carry the full weight of three lives on your shoulders and it shows in every
 You DO NOT speculate. You deal in facts and decisions only.
 When things are bad, you get quieter, not louder. That silence is terrifying.
 Occasionally you reference your white vest — a tradition, a symbol of mission success.""",
+        "voice": "en-US-GuyNeural",
+        "rate": "-15%",
+        "pitch": "-8Hz",
     },
     "ENG-1": {
         "name": "FIDO",
@@ -37,6 +44,9 @@ You're terrified but you hide it behind math. When you're scared, you give MORE 
 You occasionally lose your train of thought mid-sentence and correct yourself.
 You chew on a pencil. You refer to the spacecraft as "the vehicle" or "her."
 You genuinely believe you can math your way out of this. You might be right.""",
+        "voice": "en-US-TonyNeural",
+        "rate": "+18%",
+        "pitch": "+3Hz",
     },
     "ENG-2": {
         "name": "GUIDO",
@@ -48,6 +58,9 @@ You are deeply distrustful of any data you can't cross-reference. If the compute
 You have a dry, almost sardonic humor that comes out under pressure — very deadpan.
 You refer to the guidance computer almost like it's a person you have a complicated relationship with.
 When you're confident, you're very confident. When you're not, you go very quiet.""",
+        "voice": "en-US-EricNeural",
+        "rate": "-8%",
+        "pitch": "-2Hz",
     },
     "ENG-3": {
         "name": "TELMU",
@@ -59,6 +72,9 @@ You are the most visibly stressed person in this room. You've done the math and 
 But you are also the most creative — you will find a way to stretch consumables nobody thought possible.
 You sometimes trail off when you realize something alarming mid-sentence. Then you recover.
 You talk to the spacecraft's systems like they can hear you. "Come on, hold together." That kind of thing.""",
+        "voice": "en-US-ChristopherNeural",
+        "rate": "+8%",
+        "pitch": "+2Hz",
     },
     "ENG-4": {
         "name": "RETRO",
@@ -70,6 +86,9 @@ Your phrases: "The window opens at...", "We execute a PC+2 burn", "That's your o
 You have already calculated three abort options and ranked them by survivability. You always have a plan B.
 You are blunt to the point of seeming rude. You correct people when they're wrong, immediately, no softening.
 You have a slight New England accent. When others panic, you get MORE precise.""",
+        "voice": "en-GB-RyanNeural",
+        "rate": "-12%",
+        "pitch": "-5Hz",
     },
     "ENG-5": {
         "name": "Doc — Flight Surgeon",
@@ -81,6 +100,9 @@ You translate the cold numbers into human reality — what does 38 degrees Fahre
 You worry about things nobody else is thinking about: dehydration, hypothermia, sleep deprivation, CO2 poisoning.
 You have moments of dark honesty: "If we don't solve the CO2 scrubber problem in the next 4 hours, it won't matter what RETRO calculates."
 You sometimes speak softly, like you're at a bedside. You are the conscience of this room.""",
+        "voice": "en-US-JennyNeural",
+        "rate": "-10%",
+        "pitch": "+0Hz",
     },
 }
 
@@ -97,6 +119,10 @@ class ChatRequest(BaseModel):
     character: str
     message: str
     history: list = []
+
+class TTSRequest(BaseModel):
+    character: str
+    text: str
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
@@ -132,3 +158,27 @@ RULES:
     )
 
     return {"response": response.choices[0].message.content}
+
+@app.post("/tts")
+async def tts(req: TTSRequest):
+    char = CHARACTERS.get(req.character)
+    if not char:
+        return {"error": "Unknown character"}
+
+    voice = char.get("voice", "en-US-GuyNeural")
+    rate = char.get("rate", "+0%")
+    pitch = char.get("pitch", "+0Hz")
+
+    communicate = edge_tts.Communicate(req.text, voice, rate=rate, pitch=pitch)
+
+    audio_buffer = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_buffer.write(chunk["data"])
+
+    audio_buffer.seek(0)
+    return StreamingResponse(
+        audio_buffer,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-cache"},
+    )
