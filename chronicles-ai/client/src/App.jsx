@@ -178,7 +178,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: isAlert ? '#0d0000' : '#0a0a1a' }}>
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: isAlert ? '#0d0000' : '#0a0a1a' }}>
       <Canvas camera={{ position: [0, 14, 10], fov: 50 }} shadows>
         <ambientLight intensity={isAlert ? 0.2 : 0.4} />
         <directionalLight position={[10, 20, 10]} intensity={1} castShadow />
