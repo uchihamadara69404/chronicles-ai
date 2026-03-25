@@ -72,23 +72,49 @@ export default function App() {
 
   const speak = (text, charName) => {
     if (!window.speechSynthesis) return
+
     window.speechSynthesis.cancel()
-    const utt = new SpeechSynthesisUtterance(text)
-    const voices = window.speechSynthesis.getVoices()
-    const preferred = voices.find(v =>
-      v.name.toLowerCase().includes('male') ||
-      v.name.toLowerCase().includes('daniel') ||
-      v.name.toLowerCase().includes('david') ||
-      v.name.toLowerCase().includes('alex')
-    )
-    if (preferred) utt.voice = preferred
-    utt.rate = charName === 'KRANZ' ? 0.9 : 1.0
-    utt.pitch = charName === 'KRANZ' ? 0.8 : 1.0
-    utt.volume = 1
     setTalkingChar(charName)
-    utt.onend = () => setTalkingChar(null)
-    utt.onerror = () => setTalkingChar(null)
-    window.speechSynthesis.speak(utt)
+
+    const doSpeak = () => {
+      const utt = new SpeechSynthesisUtterance(text)
+      const voices = window.speechSynthesis.getVoices()
+
+      if (voices.length > 0) {
+        const preferred = voices.find(v =>
+          v.lang.startsWith('en') && (
+            v.name.toLowerCase().includes('daniel') ||
+            v.name.toLowerCase().includes('david') ||
+            v.name.toLowerCase().includes('alex') ||
+            v.name.toLowerCase().includes('google uk') ||
+            v.name.toLowerCase().includes('google us')
+          )
+        ) || voices.find(v => v.lang.startsWith('en'))
+        if (preferred) utt.voice = preferred
+      }
+
+      utt.rate = charName === 'KRANZ' ? 0.85 : 0.95
+      utt.pitch = charName === 'KRANZ' ? 0.75 : 1.0
+      utt.volume = 1
+
+      utt.onend = () => setTalkingChar(null)
+      utt.onerror = (e) => {
+        console.error('TTS error:', e.error)
+        setTalkingChar(null)
+      }
+
+      window.speechSynthesis.speak(utt)
+    }
+
+    // Chrome bug: calling speak() too soon after cancel() causes silent onend.
+    // Wait 150ms, then also wait for voices if they aren't loaded yet.
+    setTimeout(() => {
+      if (window.speechSynthesis.getVoices().length > 0) {
+        doSpeak()
+      } else {
+        window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true })
+      }
+    }, 150)
   }
 
   const startListening = () => {
