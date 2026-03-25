@@ -11,7 +11,36 @@ export default function App() {
   const [message, setMessage] = useState('')
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
+  const [listening, setListening] = useState(false)
   const chatEndRef = useRef(null)
+  const recognitionRef = useRef(null)
+
+  const voiceSupported = typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+  const startListening = () => {
+    if (!voiceSupported || listening) return
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const rec = new SpeechRecognition()
+    rec.lang = 'en-US'
+    rec.interimResults = false
+    rec.maxAlternatives = 1
+    recognitionRef.current = rec
+
+    rec.onstart = () => setListening(true)
+    rec.onend = () => setListening(false)
+    rec.onerror = () => setListening(false)
+    rec.onresult = (e) => {
+      const transcript = e.results[0][0].transcript
+      setMessage(prev => prev ? prev + ' ' + transcript : transcript)
+    }
+    rec.start()
+  }
+
+  const stopListening = () => {
+    recognitionRef.current?.stop()
+    setListening(false)
+  }
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -158,15 +187,33 @@ export default function App() {
               value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
-              placeholder="Speak to mission control..."
+              placeholder={listening ? 'Listening...' : 'Speak to mission control...'}
               style={{
                 flex: 1, background: '#0a0a1a',
-                border: `1px solid ${selectedChar.color || '#1a3a6a'}`,
+                border: `1px solid ${listening ? '#ff4400' : (selectedChar.color || '#1a3a6a')}`,
                 borderRadius: 4, padding: '7px 10px',
                 color: '#ddd', fontFamily: 'monospace',
                 fontSize: 12, outline: 'none',
+                transition: 'border-color 0.2s',
               }}
             />
+            {voiceSupported && (
+              <button
+                onClick={listening ? stopListening : startListening}
+                title={listening ? 'Stop listening' : 'Voice input'}
+                style={{
+                  background: listening ? '#3a0000' : '#0a1a0a',
+                  color: listening ? '#ff4400' : '#6a6',
+                  border: `1px solid ${listening ? '#ff4400' : '#1a4a1a'}`,
+                  borderRadius: 4,
+                  padding: '7px 10px', fontFamily: 'monospace',
+                  fontSize: 14, cursor: 'pointer',
+                  animation: listening ? 'pulse 1s infinite' : 'none',
+                }}
+              >
+                🎙
+              </button>
+            )}
             <button
               onClick={sendMessage}
               disabled={loading}
@@ -192,6 +239,13 @@ export default function App() {
       }}>
         CLICK A CHARACTER · DRAG TO ROTATE · SCROLL TO ZOOM
       </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
     </div>
   )
 }
