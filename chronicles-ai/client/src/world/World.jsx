@@ -43,7 +43,7 @@ const CHARACTERS = [
   { id: 'engineer5', position: [4, 0, -4],  color: '#4a8ff0', name: 'ENG-5'  },
 ]
 
-export default function World({ isAlert, onCharacterSelect, selectedChar }) {
+export default function World({ isAlert, onCharacterSelect, selectedChar, talkingChar }) {
   const offsetX = -(MAP[0].length / 2)
   const offsetZ = -(MAP.length / 2)
 
@@ -68,6 +68,7 @@ export default function World({ isAlert, onCharacterSelect, selectedChar }) {
           onSelect={onCharacterSelect}
           isSelected={selectedChar?.name === c.name}
           isAlert={isAlert}
+          isTalking={talkingChar === c.name}
         />
       ))}
     </group>

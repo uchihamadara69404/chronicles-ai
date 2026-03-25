@@ -1,36 +1,42 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 
 const ROLES = {
-  'KRANZ':  { title: 'Flight Director',     color: '#ffffff', bio: 'Gene Kranz. In charge of everything. His word is final.' },
+  'KRANZ':  { title: 'Flight Director',       color: '#ffffff', bio: 'Gene Kranz. In charge of everything. His word is final.' },
   'ENG-1':  { title: 'FIDO — Flight Dynamics', color: '#4af0c0', bio: 'Tracks spacecraft trajectory and orbital mechanics.' },
-  'ENG-2':  { title: 'GUIDO — Guidance',    color: '#4af0c0', bio: 'Monitors onboard guidance computer systems.' },
-  'ENG-3':  { title: 'TELMU — Electrical',  color: '#4af0c0', bio: 'Monitors power and life support systems.' },
-  'ENG-4':  { title: 'RETRO — Retrofire',   color: '#4a8ff0', bio: 'Calculates re-entry burn procedures.' },
+  'ENG-2':  { title: 'GUIDO — Guidance',       color: '#4af0c0', bio: 'Monitors onboard guidance computer systems.' },
+  'ENG-3':  { title: 'TELMU — Electrical',     color: '#4af0c0', bio: 'Monitors power and life support systems.' },
+  'ENG-4':  { title: 'RETRO — Retrofire',      color: '#4a8ff0', bio: 'Calculates re-entry burn procedures.' },
   'ENG-5':  { title: 'SURGEON — Flight Surgeon', color: '#4a8ff0', bio: 'Monitors crew health and vital signs.' },
 }
 
-export default function Character({ position, color, name, onSelect, isSelected, isAlert }) {
+export default function Character({ position, color, name, onSelect, isSelected, isAlert, isTalking }) {
   const bodyRef = useRef()
   const headRef = useRef()
   const groupRef = useRef()
+  const glowRingRef = useRef()
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime()
     const seed = position[0] * 3.7 + position[2] * 1.3
 
-    // Body bob
     if (bodyRef.current) {
-      bodyRef.current.position.y = 0.6 + Math.sin(t * 2 + seed) * 0.04
+      const speed = isTalking ? 6 : 2
+      const amp = isTalking ? 0.08 : 0.04
+      bodyRef.current.position.y = 0.6 + Math.sin(t * speed + seed) * amp
     }
 
-    // Head look-around
     if (headRef.current) {
-      headRef.current.rotation.y = Math.sin(t * 0.7 + seed) * 0.4
+      if (isTalking) {
+        headRef.current.rotation.y = Math.sin(t * 4 + seed) * 0.25
+        headRef.current.rotation.x = Math.sin(t * 5 + seed) * 0.1
+      } else {
+        headRef.current.rotation.y = Math.sin(t * 0.7 + seed) * 0.4
+        headRef.current.rotation.x = 0
+      }
     }
 
-    // Alert: nervous jitter
     if (isAlert && groupRef.current) {
       groupRef.current.position.x = position[0] + Math.sin(t * 18 + seed) * 0.03
       groupRef.current.position.z = position[2] + Math.cos(t * 16 + seed) * 0.03
@@ -38,14 +44,20 @@ export default function Character({ position, color, name, onSelect, isSelected,
       groupRef.current.position.x = position[0]
       groupRef.current.position.z = position[2]
     }
+
+    if (glowRingRef.current) {
+      glowRingRef.current.material.opacity = isTalking
+        ? 0.4 + Math.sin(t * 8) * 0.4
+        : 0
+    }
   })
 
   const role = ROLES[name] || {}
-  const glowColor = isSelected ? '#ffff00' : (isAlert ? '#ff4400' : color)
+  const glowColor = isTalking ? '#ffff00' : (isSelected ? '#ffff00' : (isAlert ? '#ff4400' : color))
 
   return (
     <group ref={groupRef} position={position} onClick={(e) => { e.stopPropagation(); onSelect({ name, ...role }) }}>
-      {/* Click hitbox — invisible but large */}
+      {/* Click hitbox */}
       <mesh position={[0, 0.6, 0]}>
         <boxGeometry args={[0.6, 1.4, 0.6]} />
         <meshBasicMaterial transparent opacity={0} />
@@ -64,6 +76,12 @@ export default function Character({ position, color, name, onSelect, isSelected,
           <meshBasicMaterial color="#ffff00" opacity={0.9} transparent />
         </mesh>
       )}
+
+      {/* Talking glow ring */}
+      <mesh ref={glowRingRef} position={[0, 0.13, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.32, 0.52, 24]} />
+        <meshBasicMaterial color="#ffff00" opacity={0} transparent />
+      </mesh>
 
       {/* Body */}
       <mesh ref={bodyRef} position={[0, 0.6, 0]} castShadow>
@@ -91,7 +109,7 @@ export default function Character({ position, color, name, onSelect, isSelected,
       <Text
         position={[0, 1.35, 0]}
         fontSize={0.18}
-        color={isSelected ? '#ffff00' : '#ffffff'}
+        color={isTalking ? '#ffff00' : (isSelected ? '#ffff00' : '#ffffff')}
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.02}
@@ -99,6 +117,14 @@ export default function Character({ position, color, name, onSelect, isSelected,
       >
         {name}
       </Text>
+
+      {/* Talking indicator orb */}
+      {isTalking && (
+        <mesh position={[0.22, 1.1, 0]}>
+          <sphereGeometry args={[0.06, 8, 8]} />
+          <meshBasicMaterial color="#ffff00" />
+        </mesh>
+      )}
     </group>
   )
 }
