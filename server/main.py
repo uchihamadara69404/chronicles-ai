@@ -119,6 +119,7 @@ class ChatRequest(BaseModel):
     character: str
     message: str
     history: list = []
+    shared_context: list = []
 
 class TTSRequest(BaseModel):
     character: str
@@ -129,6 +130,11 @@ async def chat(req: ChatRequest):
     char = CHARACTERS.get(req.character)
     if not char:
         return {"response": "Unknown character."}
+
+    shared_ctx_text = ""
+    if req.shared_context:
+        lines = [f"  [{item['char']}]: {item['text']}" for item in req.shared_context[-4:]]
+        shared_ctx_text = "\n\nRECENT MISSION EXCHANGES (what other stations have said):\n" + "\n".join(lines)
 
     system_prompt = f"""You are {char['name']}, {char['role']}.
 
@@ -143,7 +149,8 @@ RULES:
 - Speak naturally, like a real human being under pressure — not like a textbook.
 - Use contractions. Use incomplete sentences when appropriate. Think out loud if it fits your character.
 - Never say you are an AI. Never break character.
-- If asked something outside your expertise, redirect to what you DO know."""
+- If asked something outside your expertise, redirect to what you DO know.
+- If shared context shows what other stations said, you may reference it naturally.{shared_ctx_text}"""
 
     messages = []
     for h in req.history[-8:]:
