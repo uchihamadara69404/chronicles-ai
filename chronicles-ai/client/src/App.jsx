@@ -71,51 +71,35 @@ export default function App() {
     return `T+${h}:${m}:${s}`
   }
 
-  const audioRef = useRef(null)
-
-  const speak = async (text, charName) => {
-    // Stop any currently playing audio
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
+  const speak = (text, charName) => {
+    if (!window.speechSynthesis) return
+    window.speechSynthesis.cancel()
     setTalkingChar(charName)
 
-    try {
-      const res = await fetch(`${API}/tts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ character: charName, text }),
-      })
-      if (!res.ok) throw new Error('TTS request failed')
-
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
-
-      audio.onended = () => {
-        setTalkingChar(null)
-        URL.revokeObjectURL(url)
-        audioRef.current = null
-      }
-      audio.onerror = () => {
-        setTalkingChar(null)
-        URL.revokeObjectURL(url)
-        audioRef.current = null
-      }
-      audio.play()
-    } catch (e) {
-      console.error('TTS error:', e)
-      setTalkingChar(null)
+    const doSpeak = () => {
+      const utt = new SpeechSynthesisUtterance(text)
+      const voices = window.speechSynthesis.getVoices()
+      const enVoice = voices.find(v => v.lang.startsWith('en'))
+      if (enVoice) utt.voice = enVoice
+      utt.rate = 0.95
+      utt.pitch = 1.0
+      utt.volume = 1
+      utt.onend = () => setTalkingChar(null)
+      utt.onerror = () => setTalkingChar(null)
+      window.speechSynthesis.speak(utt)
     }
+
+    setTimeout(() => {
+      if (window.speechSynthesis.getVoices().length > 0) {
+        doSpeak()
+      } else {
+        window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true })
+      }
+    }, 150)
   }
 
   const stopSpeaking = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
+    window.speechSynthesis?.cancel()
     setTalkingChar(null)
   }
 
