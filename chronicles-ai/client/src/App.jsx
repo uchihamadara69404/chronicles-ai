@@ -5,6 +5,41 @@ import World from './world/World'
 
 const API = '/api'
 
+// Per-character voice profiles — rate, pitch, and ordered voice name preferences.
+// Browser picks the first available match. Google voices are most natural.
+const VOICE_PROFILES = {
+  'KRANZ': {
+    rate: 0.82, pitch: 0.72,
+    // Slow, deep, authoritative
+    prefer: ['google uk english male', 'daniel', 'david', 'fred', 'alex'],
+  },
+  'ENG-1': {
+    rate: 1.12, pitch: 1.18,
+    // Fast, nervous, higher pitch
+    prefer: ['google us english', 'samantha', 'karen', 'victoria', 'zira'],
+  },
+  'ENG-2': {
+    rate: 0.88, pitch: 0.95,
+    // Measured, methodical, slightly flat
+    prefer: ['google us english', 'alex', 'daniel', 'fred'],
+  },
+  'ENG-3': {
+    rate: 1.04, pitch: 1.08,
+    // Urgent, stressed, slightly higher
+    prefer: ['google us english', 'tom', 'alex', 'samantha'],
+  },
+  'ENG-4': {
+    rate: 0.84, pitch: 0.82,
+    // Cold, clipped, low and deliberate
+    prefer: ['google uk english male', 'daniel', 'fred', 'alex', 'david'],
+  },
+  'ENG-5': {
+    rate: 0.86, pitch: 1.05,
+    // Warm, calm, softer
+    prefer: ['google uk english female', 'karen', 'moira', 'samantha', 'victoria'],
+  },
+}
+
 const QUICK_PROMPTS = {
   'KRANZ':  ["What's the situation?", "Can we save the crew?", "What are our options?"],
   'ENG-1':  ["Where is the spacecraft now?", "Can we correct the trajectory?", "How long until splashdown?"],
@@ -76,25 +111,25 @@ export default function App() {
     window.speechSynthesis.cancel()
     setTalkingChar(charName)
 
+    const profile = VOICE_PROFILES[charName] || { rate: 0.95, pitch: 1.0, prefer: [] }
+
     const doSpeak = () => {
       const utt = new SpeechSynthesisUtterance(text)
       const voices = window.speechSynthesis.getVoices()
+      const enVoices = voices.filter(v => v.lang.startsWith('en'))
 
-      if (voices.length > 0) {
-        const preferred = voices.find(v =>
-          v.lang.startsWith('en') && (
-            v.name.toLowerCase().includes('daniel') ||
-            v.name.toLowerCase().includes('david') ||
-            v.name.toLowerCase().includes('alex') ||
-            v.name.toLowerCase().includes('google uk') ||
-            v.name.toLowerCase().includes('google us')
-          )
-        ) || voices.find(v => v.lang.startsWith('en'))
-        if (preferred) utt.voice = preferred
+      // Try each preferred name in order — pick first match
+      let chosen = null
+      for (const keyword of profile.prefer) {
+        chosen = enVoices.find(v => v.name.toLowerCase().includes(keyword))
+        if (chosen) break
       }
+      // Fallback: any English voice
+      if (!chosen) chosen = enVoices[0] || voices[0]
+      if (chosen) utt.voice = chosen
 
-      utt.rate = charName === 'KRANZ' ? 0.85 : 0.95
-      utt.pitch = charName === 'KRANZ' ? 0.75 : 1.0
+      utt.rate = profile.rate
+      utt.pitch = profile.pitch
       utt.volume = 1
 
       utt.onend = () => setTalkingChar(null)
@@ -106,8 +141,8 @@ export default function App() {
       window.speechSynthesis.speak(utt)
     }
 
-    // Chrome bug: calling speak() too soon after cancel() causes silent onend.
-    // Wait 150ms, then also wait for voices if they aren't loaded yet.
+    // Chrome bug: speak() called too soon after cancel() fires onend silently.
+    // Also wait for voices to load if they haven't yet.
     setTimeout(() => {
       if (window.speechSynthesis.getVoices().length > 0) {
         doSpeak()
