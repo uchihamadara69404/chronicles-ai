@@ -3,11 +3,11 @@ import sys
 import io
 import uuid
 import asyncio
+import tempfile
 import edge_tts
 
-# Ensure server/ directory is on path so physics.py can be imported
 sys.path.insert(0, os.path.dirname(__file__))
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -27,7 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory timeline state (keyed by session_id)
 TIMELINE_STATES: dict[str, dict] = {}
 
 CHARACTERS = {
@@ -128,39 +127,42 @@ The room is tense. Every person here knows what's at stake.
 """
 
 TIMELINE_DESCRIPTIONS = {
-    "A": "NOMINAL — Crew on track for April 17 Pacific splashdown.",
-    "B": "SKIP-OUT — Spacecraft skipped off atmosphere. Vehicle lost.",
-    "C": "BURNUP / CO2 — Heat shield failure or crew incapacitation.",
-    "D": "POWER FAILURE — Batteries depleted. Guidance offline.",
+    "A": "NOMINAL — Crew recovery on track",
+    "B": "SKIP-OUT — Entry angle too shallow. Crew lost.",
+    "C": "BURNUP / CO2 — Mission failure.",
+    "D": "POWER FAILURE — Batteries depleted before splashdown.",
 }
-
-
-# ─────────────────────────────────────────
-# Request Models
-# ─────────────────────────────────────────
 
 class ChatRequest(BaseModel):
     character: str
     message: str
     history: list = []
     shared_context: list = []
-    session_id: str = "default"
+    session_id: str = ""
+    mission_met: float = 55.92
+
+class EvaluateRequest(BaseModel):
+    command_type: str
+    params: dict = {}
+    session_id: str = ""
     mission_met: float = 55.92
 
 class TTSRequest(BaseModel):
     character: str
     text: str
 
-class EvaluateRequest(BaseModel):
-    command_type: str          # "burn" | "power" | "co2"
-    params: dict               # type-specific params
-    session_id: str = "default"
-    mission_met: float = 55.92
-
-
-# ─────────────────────────────────────────
-# /chat
-# ─────────────────────────────────────────
+# ── NEW: Transcription endpoint ─────────────────────────────────────────────
+@app.post("/transcribe")
+async def transcribe(audio: UploadFile = File(...)):
+    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+        tmp.write(await audio.read())
+        tmp_path = tmp.name
+    with open(tmp_path, "rb") as f:
+        transcription = client.audio.transcriptions.create(
+            model="whisper-large-v3",
+            file=("audio.webm", f, "audio/webm"),
+        )
+    return {"text": transcription.text}
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
@@ -168,20 +170,17 @@ async def chat(req: ChatRequest):
     if not char:
         return {"response": "Unknown character."}
 
-    # Shared cross-character context
     shared_ctx_text = ""
     if req.shared_context:
         lines = [f"  [{item['char']}]: {item['text']}" for item in req.shared_context[-4:]]
         shared_ctx_text = "\n\nRECENT MISSION EXCHANGES (other stations):\n" + "\n".join(lines)
 
-    # Real transcript context — nearest entries to current MET
     transcript_entries = get_transcript_context(req.mission_met, n=2)
     transcript_text = "\n\nACTUAL TRANSCRIPT AT THIS MISSION TIME:\n" + "\n".join(
         f'  [T+{e["met"]:.2f}h] {e["speaker"]}: "{e["line"]}" — {e["note"]}'
         for e in transcript_entries
     )
 
-    # Timeline state
     timeline = TIMELINE_STATES.get(req.session_id, {})
     timeline_text = ""
     if timeline:
@@ -221,11 +220,6 @@ RULES:
 
     return {"response": response.choices[0].message.content}
 
-
-# ─────────────────────────────────────────
-# /evaluate  — physics engine endpoint
-# ─────────────────────────────────────────
-
 @app.post("/evaluate")
 async def evaluate(req: EvaluateRequest):
     result = None
@@ -234,26 +228,17 @@ async def evaluate(req: EvaluateRequest):
         delta_v = float(req.params.get("delta_v_ms", 30.7))
         met     = float(req.params.get("met_hours", 79.46))
         result  = evaluate_burn(delta_v, met)
-
     elif req.command_type == "power":
         load_amps = float(req.params.get("load_amps", 43.0))
         result    = evaluate_power(load_amps)
-
     elif req.command_type == "co2":
         materials = req.params.get("materials", [])
         result    = evaluate_co2(materials)
-
     else:
         return {"error": f"Unknown command_type: {req.command_type}"}
 
-    # Update timeline state
     if result:
-        branch_map = {
-            "TIMELINE A": "A",
-            "TIMELINE B": "B",
-            "TIMELINE C": "C",
-            "TIMELINE D": "D",
-        }
+        branch_map = {"TIMELINE A": "A", "TIMELINE B": "B", "TIMELINE C": "C", "TIMELINE D": "D"}
         branch = "A"
         for key, val in branch_map.items():
             if result["timeline"].startswith(key):
@@ -263,7 +248,6 @@ async def evaluate(req: EvaluateRequest):
         if req.session_id not in TIMELINE_STATES:
             TIMELINE_STATES[req.session_id] = {"branch": "A", "decisions": []}
 
-        # Only downgrade (never recover from a bad branch)
         current = TIMELINE_STATES[req.session_id]["branch"]
         if branch != "A" or current == "A":
             TIMELINE_STATES[req.session_id]["branch"] = branch
@@ -275,20 +259,12 @@ async def evaluate(req: EvaluateRequest):
             "met": req.mission_met,
         })
 
-    # Also inject nearest transcript context
     transcript = get_transcript_context(req.mission_met, n=1)
-
     return {
-        **result,
-        "session_id": req.session_id,
-        "timeline_state": TIMELINE_STATES.get(req.session_id, {}),
+        **(result or {}),
         "transcript_context": transcript,
+        "timeline_state": TIMELINE_STATES.get(req.session_id, {}),
     }
-
-
-# ─────────────────────────────────────────
-# /tts
-# ─────────────────────────────────────────
 
 @app.post("/tts")
 async def tts(req: TTSRequest):
@@ -300,7 +276,11 @@ async def tts(req: TTSRequest):
     rate  = char.get("rate", "+0%")
     pitch = char.get("pitch", "+0Hz")
 
-    communicate = edge_tts.Communicate(req.text, voice, rate=rate, pitch=pitch)
+    clean_text = req.text.strip().strip('"').strip("'").strip()
+    if not clean_text:
+        return {"error": "Empty text"}
+
+    communicate = edge_tts.Communicate(clean_text, voice, rate=rate, pitch=pitch)
 
     audio_buffer = io.BytesIO()
     async for chunk in communicate.stream():
