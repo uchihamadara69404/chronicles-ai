@@ -4,11 +4,8 @@ import { OrbitControls } from '@react-three/drei'
 import World from './world/World'
 
 const API = '/api'
-
-// One session ID per page load — tracks timeline state on backend
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
 
-// ── Character map positions ─────────────────────────────────────────────────
 const HOME_POSITIONS = {
   'KRANZ': [0,  0,  2],
   'ENG-1': [-4, 0, -1],
@@ -18,12 +15,11 @@ const HOME_POSITIONS = {
   'ENG-5': [4,  0, -4],
 }
 
-// Where each character physically moves during a crisis broadcast
 const CRISIS_POSITIONS = {
-  'KRANZ': [0,  0,  0],    // steps forward to the director's console
-  'ENG-3': [0,  0,  1],    // TELMU rushes to the center floor
-  'ENG-4': [-2, 0, -2],    // RETRO moves closer to main floor
-  'ENG-5': [2,  0, -2],    // Doc moves toward comms station
+  'KRANZ': [0,  0,  0],
+  'ENG-3': [0,  0,  1],
+  'ENG-4': [-2, 0, -2],
+  'ENG-5': [2,  0, -2],
 }
 
 const CHAR_COLORS = {
@@ -44,12 +40,11 @@ const QUICK_PROMPTS = {
   'ENG-5':  ["How is the crew holding up?", "Are they in danger?", "What are their vitals?"],
 }
 
-// Mission events — fire at session seconds
 const MISSION_EVENTS = [
-  { id: 'e1', at: 8,   charKey: 'KRANZ',  text: "All stations — verify your systems. Stay sharp tonight." },
-  { id: 'e2', at: 30,  charKey: 'ENG-3',  text: "Flight, showing anomalous O2 tank 2 heater cycling. Watching it." },
-  { id: 'e3', at: 75,  charKey: 'ENG-1',  text: "Trajectory nominal. Vehicle is right on the money at 199,340 klicks." },
-  { id: 'e4', at: 140, charKey: 'KRANZ',  text: "Odyssey, Houston — requesting cryo stir on all tanks. Acknowledge." },
+  { id: 'e1', at: 8,   charKey: 'KRANZ', text: "All stations — verify your systems. Stay sharp tonight." },
+  { id: 'e2', at: 30,  charKey: 'ENG-3', text: "Flight, showing anomalous O2 tank 2 heater cycling. Watching it." },
+  { id: 'e3', at: 75,  charKey: 'ENG-1', text: "Trajectory nominal. Vehicle is right on the money at 199,340 klicks." },
+  { id: 'e4', at: 140, charKey: 'KRANZ', text: "Odyssey, Houston — requesting cryo stir on all tanks. Acknowledge." },
   {
     id: 'e5', at: 200, charKey: 'ENG-3',
     text: "FLIGHT — MASTER ALARM. Tank 2 pressure spike then dropout. I've lost SM O2 tank 2 telemetry.",
@@ -105,13 +100,14 @@ export default function App() {
   const [message,         setMessage]         = useState('')
   const [history,         setHistory]         = useState([])
   const [loading,         setLoading]         = useState(false)
-  const [listening,       setListening]       = useState(false)
+  const [recording,       setRecording]       = useState(false)
+  const [transcribing,    setTranscribing]    = useState(false)
   const [talkingChar,     setTalkingChar]     = useState(null)
   const [o2,              setO2]              = useState(100)
   const [power,           setPower]           = useState(100)
   const [missionTime,     setMissionTime]     = useState(0)
   const [clockSpeed,      setClockSpeed]      = useState(1)
-  const clockSpeedRef = useRef(1)
+  const clockSpeedRef     = useRef(1)
   const [introPhase,      setIntroPhase]      = useState('typing')
   const [introText,       setIntroText]       = useState('')
   const [broadcast,       setBroadcast]       = useState(null)
@@ -124,10 +120,12 @@ export default function App() {
   const [timelineBranch,  setTimelineBranch]  = useState('A')
 
   const chatEndRef        = useRef(null)
-  const recognitionRef    = useRef(null)
   const alertRef          = useRef(isAlert)
   alertRef.current        = isAlert
   const audioCtxRef       = useRef(null)
+  const audioRef          = useRef(null)   // tracks currently playing TTS audio
+  const mediaRecorderRef  = useRef(null)
+  const chunksRef         = useRef([])
   const firedEventsRef    = useRef(new Set())
   const crisisEventsRef   = useRef(new Set())
   const alertStartTimeRef = useRef(null)
@@ -136,13 +134,8 @@ export default function App() {
   const missionTimeRef    = useRef(0)
   missionTimeRef.current  = missionTime
 
-  const voiceSupported = typeof window !== 'undefined' &&
-    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
-
-  // ── Derived mission MET (for backend transcript context) ───────────────────
   const missionMet = () => 55.92 + missionTimeRef.current / 3600
 
-  // ── Scroll chat ────────────────────────────────────────────────────────────
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [history])
 
   // ── Intro typewriter ───────────────────────────────────────────────────────
@@ -177,7 +170,7 @@ export default function App() {
     return () => clearInterval(timer)
   }, [])
 
-  // ── Scripted events ────────────────────────────────────────────────────────
+  // ── Mission events ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (introPhase !== 'done') return
     MISSION_EVENTS.forEach(ev => {
@@ -204,13 +197,11 @@ export default function App() {
     })
   }, [missionTime, isAlert])
 
-  // ── Clock speed ────────────────────────────────────────────────────────────
   const changeClockSpeed = useCallback((spd) => {
     clockSpeedRef.current = spd
     setClockSpeed(spd)
   }, [])
 
-  // ── Character movement ─────────────────────────────────────────────────────
   const moveCharacter = useCallback((charKey, crisis = false) => {
     setCharPositions(prev => ({
       ...prev,
@@ -224,14 +215,11 @@ export default function App() {
     setCharPositions({ ...HOME_POSITIONS })
   }, [])
 
-  // ── Broadcast ─────────────────────────────────────────────────────────────
   const showBroadcast = useCallback((charKey, text) => {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
     setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
     setSharedLog(prev => [...prev.slice(-11), { char: charKey, text, time: missionTimeRef.current }])
-    // Move character to crisis position when they broadcast
     moveCharacter(charKey, true)
-    // Return to home after 8s
     broadcastTimerRef.current = setTimeout(() => {
       setBroadcast(null)
       moveCharacter(charKey, false)
@@ -254,12 +242,17 @@ export default function App() {
       const data = await res.json()
       setEvalResult({ ...data, label, timestamp: missionTimeRef.current })
       if (data.timeline_state?.branch) setTimelineBranch(data.timeline_state.branch)
+
+      // Speak the outcome aloud using RETRO's voice for burn, TELMU for power/co2
+      const evalChar = type === 'burn' ? 'ENG-4' : 'ENG-3'
+      const shortOutcome = data.outcome?.split('.')[0] || ''
+      if (shortOutcome) speakTTS(shortOutcome, evalChar)
     } catch (e) {
       console.error('Evaluate error:', e)
     }
   }, [])
 
-  // ── Ambient audio ─────────────────────────────────────────────────────────
+  // ── Ambient audio ──────────────────────────────────────────────────────────
   const initAudio = useCallback(() => {
     if (audioCtxRef.current) return
     try {
@@ -272,41 +265,25 @@ export default function App() {
       const data = buf.getChannelData(0)
       for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1
       const noise = ctx.createBufferSource()
-      noise.buffer = buf
-      noise.loop = true
+      noise.buffer = buf; noise.loop = true
       const noiseFilter = ctx.createBiquadFilter()
-      noiseFilter.type = 'bandpass'
-      noiseFilter.frequency.value = 350
-      noiseFilter.Q.value = 0.4
-      const noiseGain = ctx.createGain()
-      noiseGain.gain.value = 0.035
-      noise.connect(noiseFilter)
-      noiseFilter.connect(noiseGain)
-      noiseGain.connect(ctx.destination)
+      noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 350; noiseFilter.Q.value = 0.4
+      const noiseGain = ctx.createGain(); noiseGain.gain.value = 0.035
+      noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(ctx.destination)
       noise.start()
-      const hum = ctx.createOscillator()
-      hum.type = 'sawtooth'
-      hum.frequency.value = 60
-      const humGain = ctx.createGain()
-      humGain.gain.value = 0.005
-      hum.connect(humGain)
-      humGain.connect(ctx.destination)
-      hum.start()
+      const hum = ctx.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 60
+      const humGain = ctx.createGain(); humGain.gain.value = 0.005
+      hum.connect(humGain); humGain.connect(ctx.destination); hum.start()
       setAudioReady(true)
     } catch {}
   }, [])
 
   const playAlarm = useCallback(() => {
-    const ctx = audioCtxRef.current
-    if (!ctx) return
+    const ctx = audioCtxRef.current; if (!ctx) return
     try {
-      const osc  = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'square'
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      gain.gain.value = 0
-      osc.start()
+      const osc = ctx.createOscillator(); const gain = ctx.createGain()
+      osc.type = 'square'; osc.connect(gain); gain.connect(ctx.destination)
+      gain.gain.value = 0; osc.start()
       const t = ctx.currentTime
       for (let i = 0; i < 6; i++) {
         osc.frequency.setValueAtTime(i % 2 === 0 ? 880 : 660, t + i * 0.35)
@@ -317,9 +294,8 @@ export default function App() {
     } catch {}
   }, [])
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
   const formatMissionTime = (secs) => {
-    const base  = 55 * 3600 + 55 * 60 + 20
+    const base = 55 * 3600 + 55 * 60 + 20
     const total = base + secs
     const h = String(Math.floor(total / 3600)).padStart(2, '0')
     const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
@@ -327,46 +303,81 @@ export default function App() {
     return `T+${h}:${m}:${s}`
   }
 
-  const speak = (text, charName) => {
-    if (!window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    setTalkingChar(charName)
-    const doSpeak = () => {
-      const utt    = new SpeechSynthesisUtterance(text)
-      const voices = window.speechSynthesis.getVoices()
-      const en     = voices.find(v => v.lang.startsWith('en'))
-      if (en) utt.voice = en
-      utt.rate   = 0.95
-      utt.pitch  = 1.0
-      utt.volume = 1
-      utt.onend  = () => setTalkingChar(null)
-      utt.onerror = () => setTalkingChar(null)
-      window.speechSynthesis.speak(utt)
+  // ── TTS — calls backend edge-tts neural voices ────────────────────────────
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
     }
-    setTimeout(() => {
-      if (window.speechSynthesis.getVoices().length > 0) doSpeak()
-      else window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true })
-    }, 150)
+    setTalkingChar(null)
   }
 
-  const stopSpeaking = () => { window.speechSynthesis?.cancel(); setTalkingChar(null) }
-
-  const startListening = () => {
-    if (!voiceSupported || listening) return
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    const rec = new SpeechRecognition()
-    rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1
-    recognitionRef.current = rec
-    rec.onstart  = () => setListening(true)
-    rec.onerror  = () => setListening(false)
-    rec.onresult = (e) => { const t = e.results[0][0].transcript; setMessage(t); rec._hasResult = true }
-    rec.onend    = () => { setListening(false); if (rec._hasResult) setTimeout(() => document.getElementById('send-btn')?.click(), 300) }
-    rec.start()
+  const speakTTS = async (text, charName) => {
+    stopAudio()
+    setTalkingChar(charName)
+    try {
+      const res = await fetch(`${API}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, character: charName }),
+      })
+      if (!res.ok) throw new Error('TTS failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audio.volume = 1.0
+      audioRef.current = audio
+      await audio.play()
+      audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setTalkingChar(null) }
+      audio.onerror = () => { setTalkingChar(null) }
+    } catch (e) {
+      console.error('TTS error:', e)
+      setTalkingChar(null)
+    }
   }
 
-  const stopListening = () => { recognitionRef.current?.stop(); setListening(false) }
+  // ── Voice input — MediaRecorder + Groq Whisper ────────────────────────────
+  const startRecording = async () => {
+    if (recording || transcribing) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+      const recorder = new MediaRecorder(stream, { mimeType })
+      chunksRef.current = []
+      recorder.ondataavailable = (e) => chunksRef.current.push(e.data)
+      recorder.onstop = async () => {
+        setTranscribing(true)
+        const blob = new Blob(chunksRef.current, { type: mimeType })
+        const formData = new FormData()
+        formData.append('audio', blob, mimeType === 'audio/webm' ? 'audio.webm' : 'audio.mp4')
+        try {
+          const res = await fetch(`${API}/transcribe`, { method: 'POST', body: formData })
+          const data = await res.json()
+          if (data.text?.trim()) {
+            setMessage(data.text.trim())
+            // auto-send after short delay
+            setTimeout(() => document.getElementById('send-btn')?.click(), 300)
+          }
+        } catch (e) { console.error('Transcribe error:', e) }
+        setTranscribing(false)
+        stream.getTracks().forEach(t => t.stop())
+      }
+      recorder.start()
+      mediaRecorderRef.current = recorder
+      setRecording(true)
+    } catch (e) {
+      alert('Microphone access denied.')
+    }
+  }
 
-  const handleSelect = (char) => { stopSpeaking(); setSelectedChar(char); setHistory([]); setMessage('') }
+  const stopRecording = () => {
+    if (!recording) return
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
+  }
+
+  const handleSelect = (char) => { stopAudio(); setSelectedChar(char); setHistory([]); setMessage('') }
 
   const handleCrisisToggle = () => {
     const next = !isAlert
@@ -393,8 +404,7 @@ export default function App() {
       setIsAlert(true); setO2(82); setPower(74)
       alertStartTimeRef.current = missionTimeRef.current
       playAlarm()
-      moveCharacter('KRANZ', true)
-      moveCharacter('ENG-3', true)
+      moveCharacter('KRANZ', true); moveCharacter('ENG-3', true)
       showBroadcast('KRANZ', "This is now a contingency. All stations — declaring an emergency. Failure is not an option.")
     } else {
       showBroadcast('KRANZ', "Copy. All stations, stand by. Continue monitoring. I want answers in five minutes.")
@@ -411,6 +421,7 @@ export default function App() {
   const sendMessage = async (overrideMsg) => {
     const msg = overrideMsg || message
     if (!msg.trim() || loading) return
+    stopAudio()
     const msgTime = missionTimeRef.current
     const userMsg = { role: 'user', content: msg, time: msgTime }
     const newHistory = [...history, userMsg]
@@ -431,12 +442,12 @@ export default function App() {
           mission_met: missionMet(),
         }),
       })
-      const data  = await res.json()
+      const data = await res.json()
       const reply = data.response
       const replyTime = missionTimeRef.current
       setHistory([...newHistory, { role: 'assistant', content: reply, time: replyTime }])
       setSharedLog(prev => [...prev.slice(-11), { char: selectedChar.name, text: reply, time: replyTime }])
-      speak(reply, selectedChar.name)
+      speakTTS(reply, selectedChar.name)
     } catch {
       setHistory([...newHistory, { role: 'assistant', content: '[COMMS FAILURE]', time: msgTime }])
     }
@@ -448,14 +459,13 @@ export default function App() {
     const lines = [`APOLLO 13 MISSION TRANSCRIPT`, `Generated: ${formatMissionTime(missionTimeRef.current)}`, `Timeline: ${timelineBranch}`, `${'═'.repeat(42)}`, '']
     sharedLog.forEach(e => { lines.push(`[${formatMissionTime(e.time)}] ${CHAR_LABELS[e.char] || e.char}`); lines.push(e.text); lines.push('') })
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
     a.href = url; a.download = 'apollo13-transcript.txt'; a.click()
     URL.revokeObjectURL(url)
   }
 
   const gaugeColor = (val) => val > 60 ? '#4af0c0' : val > 30 ? '#ffaa00' : '#ff4400'
-
   const telColor = (key, val) => {
     if (key === 'co2'  && val > 7)  return '#ff4400'
     if (key === 'co2'  && val > 4)  return '#ffaa00'
@@ -467,22 +477,21 @@ export default function App() {
   }
 
   const BRANCH_COLORS = { A: '#4af0c0', B: '#ff4400', C: '#ff8800', D: '#ff4400' }
-  const BRANCH_LABELS = {
-    A: 'NOMINAL', B: 'SKIP-OUT · CREW LOST',
-    C: 'CO2/BURNUP', D: 'POWER FAILURE',
-  }
+  const BRANCH_LABELS = { A: 'NOMINAL', B: 'SKIP-OUT · CREW LOST', C: 'CO2/BURNUP', D: 'POWER FAILURE' }
 
   const handleGlobalClick = () => {
     if (introPhase !== 'done') { setIntroPhase('done'); initAudio() }
   }
 
   const onChatTouchStart = (e) => { touchStartXRef.current = e.touches[0].clientX }
-  const onChatTouchEnd   = (e) => {
+  const onChatTouchEnd = (e) => {
     if (touchStartXRef.current === null) return
     const dx = e.changedTouches[0].clientX - touchStartXRef.current
-    if (dx < -60) { stopSpeaking(); setSelectedChar(null) }
+    if (dx < -60) { stopAudio(); setSelectedChar(null) }
     touchStartXRef.current = null
   }
+
+  const micStatus = recording ? 'RELEASE' : transcribing ? 'PROCESSING...' : '🎙 HOLD'
 
   return (
     <div className="app-root" style={{ background: isAlert ? '#0d0000' : '#0a0a1a' }} onClick={handleGlobalClick}>
@@ -490,13 +499,7 @@ export default function App() {
         <ambientLight intensity={isAlert ? 0.2 : 0.4} />
         <directionalLight position={[10, 20, 10]} intensity={1} castShadow />
         <pointLight position={[0, 5, 0]} color={isAlert ? '#ff0000' : '#4466ff'} intensity={isAlert ? 1.5 : 0.3} />
-        <World
-          isAlert={isAlert}
-          onCharacterSelect={handleSelect}
-          selectedChar={selectedChar}
-          talkingChar={talkingChar}
-          charPositions={charPositions}
-        />
+        <World isAlert={isAlert} onCharacterSelect={handleSelect} selectedChar={selectedChar} talkingChar={talkingChar} charPositions={charPositions} />
         <OrbitControls maxPolarAngle={Math.PI / 2.8} minDistance={8} maxDistance={25} />
       </Canvas>
 
@@ -509,27 +512,19 @@ export default function App() {
 
       {/* TOP BAR */}
       <div className="topbar" style={{ borderBottom: `1px solid ${isAlert ? '#ff4400' : '#1a3a6a'}` }}>
-        <span className="topbar-title" style={{ color: isAlert ? '#ff4400' : '#4af' }}>
-          CHRONICLES AI · APOLLO 13
-        </span>
+        <span className="topbar-title" style={{ color: isAlert ? '#ff4400' : '#4af' }}>CHRONICLES AI · APOLLO 13</span>
         <span className="topbar-clock">{formatMissionTime(missionTime)}</span>
         <div className="topbar-actions">
           <div className="speed-controls">
             {[1, 5, 30, 60].map(spd => (
               <button key={spd} className="speed-btn"
                 onClick={e => { e.stopPropagation(); changeClockSpeed(spd) }}
-                style={{
-                  background: clockSpeed === spd ? '#1a3a6a' : 'transparent',
-                  color: clockSpeed === spd ? '#4af' : '#444',
-                  borderColor: clockSpeed === spd ? '#4af' : '#222',
-                }}>
+                style={{ background: clockSpeed === spd ? '#1a3a6a' : 'transparent', color: clockSpeed === spd ? '#4af' : '#444', borderColor: clockSpeed === spd ? '#4af' : '#222' }}>
                 {spd}×
               </button>
             ))}
           </div>
-          <span className="timeline-badge" style={{ color: BRANCH_COLORS[timelineBranch] }}>
-            {BRANCH_LABELS[timelineBranch]}
-          </span>
+          <span className="timeline-badge" style={{ color: BRANCH_COLORS[timelineBranch] }}>{BRANCH_LABELS[timelineBranch]}</span>
           {sharedLog.length > 0 && (
             <button className="export-btn" onClick={e => { e.stopPropagation(); exportTranscript() }}>⬇ LOG</button>
           )}
@@ -586,7 +581,7 @@ export default function App() {
         ))}
       </div>
 
-      {/* PHYSICS EVALUATION RESULT */}
+      {/* PHYSICS EVAL PANEL */}
       {evalResult && (
         <div className="eval-panel" style={{ borderColor: evalResult.viable ? '#4af0c0' : '#ff4400' }}
           onClick={e => e.stopPropagation()}>
@@ -647,8 +642,8 @@ export default function App() {
               <div className="chat-char-title">{selectedChar.title}</div>
             </div>
             <div className="chat-header-btns">
-              {talkingChar && <button className="btn-stop" onClick={stopSpeaking} title="Stop speaking">⏹</button>}
-              <button className="btn-close" onClick={() => { stopSpeaking(); setSelectedChar(null) }}>✕</button>
+              {talkingChar && <button className="btn-stop" onClick={stopAudio} title="Stop speaking">⏹</button>}
+              <button className="btn-close" onClick={() => { stopAudio(); setSelectedChar(null) }}>✕</button>
             </div>
           </div>
 
@@ -683,20 +678,22 @@ export default function App() {
             <input className="chat-input" value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
-              placeholder={listening ? 'Listening...' : 'Speak to mission control...'}
-              style={{ border: `1px solid ${listening ? '#ff4400' : (selectedChar.color || '#1a3a6a')}` }}
+              placeholder={transcribing ? 'Transcribing...' : recording ? 'Recording...' : 'Type or hold mic...'}
+              style={{ border: `1px solid ${recording ? '#ff4400' : (selectedChar.color || '#1a3a6a')}` }}
             />
-            {voiceSupported && (
-              <button className="btn-mic"
-                onPointerDown={e => { e.stopPropagation(); startListening() }}
-                onPointerUp={stopListening} onPointerLeave={stopListening}
-                style={{
-                  background: listening ? '#3a0000' : '#0a1a0a',
-                  color: listening ? '#ff4400' : '#6a6',
-                  border: `1px solid ${listening ? '#ff4400' : '#1a4a1a'}`,
-                  animation: listening ? 'pulse 1s infinite' : 'none',
-                }}>🎙</button>
-            )}
+            <button className="btn-mic"
+              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); startRecording() }}
+              onPointerUp={e => { e.preventDefault(); stopRecording() }}
+              onPointerLeave={stopRecording}
+              disabled={transcribing || loading}
+              style={{
+                background: recording ? '#3a0000' : transcribing ? '#111' : '#0a1a0a',
+                color: recording ? '#ff4400' : transcribing ? '#333' : '#6a6',
+                border: `1px solid ${recording ? '#ff4400' : '#1a4a1a'}`,
+                animation: recording ? 'pulse 1s infinite' : 'none',
+                fontSize: 12,
+                minWidth: 56,
+              }}>{micStatus}</button>
             <button id="send-btn" className="btn-send" onClick={() => sendMessage()} disabled={loading}
               style={{ background: loading ? '#111' : '#0f3460', color: loading ? '#333' : '#fff' }}>▶</button>
           </div>
@@ -746,7 +743,6 @@ export default function App() {
         .telem-val { color:#4af0c0;text-align:right; }
         .telem-unit { color:#333;font-size:9px; }
 
-        /* Physics evaluation panel */
         .eval-panel { position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:clamp(280px,70vw,520px);background:rgba(4,8,18,0.98);border:1px solid #4af0c0;border-radius:8px;padding:12px 14px;z-index:25;display:flex;flex-direction:column;gap:6px;animation:slideDown 0.3s ease; }
         .eval-header { display:flex;justify-content:space-between;align-items:center; }
         .eval-label { color:#666;font-size:10px;letter-spacing:1px; }
@@ -787,7 +783,7 @@ export default function App() {
         .quick-btn { background:#0a0f1a;color:#4a8aaa;border:1px solid #1a2a3a;border-radius:4px;padding:5px 8px;font-family:monospace;font-size:clamp(10px,1.6vw,11px);cursor:pointer;text-align:left; }
         .chat-input-row { display:flex;gap:5px;flex-shrink:0; }
         .chat-input { flex:1;background:#0a0a1a;border-radius:4px;padding:7px 9px;color:#ddd;font-family:monospace;font-size:clamp(11px,1.8vw,12px);outline:none;transition:border-color 0.2s;min-width:0; }
-        .btn-mic { border-radius:4px;padding:7px 9px;font-family:monospace;font-size:14px;cursor:pointer;flex-shrink:0;user-select:none; }
+        .btn-mic { border-radius:4px;padding:7px 6px;font-family:monospace;cursor:pointer;flex-shrink:0;user-select:none;letter-spacing:0.5px;transition:all 0.1s; }
         .btn-send { border:none;border-radius:4px;padding:7px 11px;font-family:monospace;font-size:12px;cursor:pointer;flex-shrink:0; }
         .btn-send:disabled { cursor:default; }
 
