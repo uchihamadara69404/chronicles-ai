@@ -1,0 +1,185 @@
+Now I have the complete picture. Here's the full roadmap for **A (Character Movement) + C (RAG + Physics-backed mission forking)**:
+
+***
+
+## What You're Building: "Live History Engine"
+
+The core idea is: **the actual Apollo 13 transcript drives the timeline, physics models determine if your decisions are survivable, and the story forks into alternate timelines based on whether your commands are correct.** Characters physically move on the 3D map when crisis events trigger.
+
+***
+
+## Feature A — Character Movement on the Map
+
+Your `World` component (in `chronicles-ai/client/src/world/`) renders the 3D Mission Control floor with character sprites/meshes on tiles. Right now characters are static. Here's what needs to change:
+
+### How It Works
+Each character needs a **home tile** and a set of **crisis tiles** they move to when specific events fire. Movement is triggered from `App.jsx` by passing a `characterPositions` prop to `<World />`. 
+
+### What to Add to `App.jsx`
+
+```js
+// Default home positions per character (tile coords on the 3D grid)
+const HOME_POSITIONS = {
+  KRANZ:  [0, 0, 0],
+  'ENG-1': [-2, 0, 1],
+  'ENG-2': [-1, 0, 2],
+  'ENG-3': [1, 0, 2],
+  'ENG-4': [2, 0, 1],
+  'ENG-5': [2, 0, -1],
+}
+
+// Crisis positions — where they physically move during specific events
+const CRISIS_POSITIONS = {
+  KRANZ:  [0, 0, -1],   // steps forward to the front console
+  'ENG-3': [0, 0, 1],   // rushes to the center floor
+  'ENG-5': [-1, 0, -1], // moves toward the comms station
+}
+
+const [charPositions, setCharPositions] = useState(HOME_POSITIONS)
+
+// Inside handleDecision / showBroadcast, trigger movement:
+const triggerMovement = (charKey, crisis = false) => {
+  setCharPositions(prev => ({
+    ...prev,
+    [charKey]: crisis
+      ? (CRISIS_POSITIONS[charKey] || HOME_POSITIONS[charKey])
+      : HOME_POSITIONS[charKey]
+  }))
+}
+```
+
+### What to Add to `World.jsx`
+Use `useSpring` from `@react-spring/three` (already likely available since you have R3F) to smoothly animate each character mesh to its new position when `charPositions[key]` changes:
+
+```jsx
+import { useSpring, animated } from '@react-spring/three'
+
+function Character({ charKey, targetPos, isSelected, isTalking, onClick }) {
+  const { position } = useSpring({
+    position: targetPos,
+    config: { mass: 1, tension: 120, friction: 20 } // smooth walk feel
+  })
+  return (
+    <animated.group position={position} onClick={onClick}>
+      {/* existing mesh */}
+    </animated.group>
+  )
+}
+```
+
+Characters will physically **glide across the floor** when crisis events fire — TELMU rushing to the center floor when O₂ drops, KRANZ stepping forward when declaring emergency. 
+
+***
+
+## Feature C — RAG + Physics + Mission Forking
+
+This is the big one. Three sub-systems working together:
+
+### C1 — Real Transcript RAG (Backend)
+
+The actual [Apollo 13 air-to-ground transcripts](https://www.jsc.nasa.gov/history/mission_trans/apollo13.htm) and Mission Control loop recordings are public domain NASA documents. Load them as a vector store and inject the **real exchange closest to the current mission time** into every character's system prompt. 
+
+**Backend changes to `server/main.py`:**
+
+```python
+# Add these dependencies to requirements.txt:
+# chromadb, sentence-transformers, PyPDF2 (or just plain txt parsing)
+
+import chromadb
+from sentence_transformers import SentenceTransformer
+
+# On startup, load and chunk the transcript
+# Each chunk = ~200 words tagged with mission elapsed time (MET)
+# Store in ChromaDB with MET as metadata
+
+@app.on_event("startup")
+async def load_transcript():
+    # Parse NASA transcript txt files
+    # Chunk by speaker turn, embed, store in chroma
+    pass
+
+# In /chat endpoint, before building system_prompt:
+# Query chroma for the 3 transcript chunks closest to current MET
+# Inject as: "ACTUAL TRANSCRIPT AT THIS MOMENT:\n{chunks}"
+```
+
+This means when you ask FIDO "where is the spacecraft?" at T+56:00, he doesn't guess — he pulls the actual navigation data Jack Lousma was reading at that exact moment and quotes it. 
+
+***
+
+### C2 — Physics Engine (Pass/Fail decisions)
+
+This is what separates **good commands from bad ones**. Add a `PhysicsEngine` module on the backend that validates your decisions against real orbital mechanics. 
+
+```python
+# server/physics.py
+
+import math
+
+APOLLO_13_STATE = {
+    "met_hours": 55.92,           # Mission Elapsed Time at explosion
+    "distance_from_earth_km": 321860,
+    "velocity_km_s": 1.22,        # slowing due to gravity
+    "lunar_distance_km": 56327,   # distance from Moon at explosion
+    "co2_scrubber_hours": 87,     # LEM scrubber capacity
+    "power_amps": 43,             # available amps in LEM
+    "reentry_corridor_deg": 6.5,  # reentry angle tolerance (±0.3°)
+}
+
+def evaluate_burn_command(burn_time_met, delta_v_ms, current_state):
+    """
+    Returns: { viable: bool, outcome: str, timeline: str, physics_note: str }
+    Checks if a proposed burn puts the spacecraft on a free-return trajectory
+    or a valid re-entry corridor within physical constraints.
+    """
+    # Patched conic approximation for Earth return trajectory
+    # Real PC+2 burn was 30.7 m/s at MET 79:27:38.9
+    pass
+
+def evaluate_power_decision(loads_shed, current_amps):
+    """
+    Checks if power load shedding keeps crew alive for 87-hour return window.
+    LEM had 2,181 amp-hours. Nominal consumption ~55A. Must stretch to 43A.
+    """
+    pass
+
+def evaluate_co2_fix(materials_used):
+    """
+    The actual mailbox CO2 scrubber adapter used: cardboard, plastic bag,
+    sock, duct tape. Validates if proposed solution can seal to <7.6 mmHg CO2.
+    """
+    pass
+```
+
+A new `/evaluate` endpoint accepts your command, runs it through the physics engine, and returns:
+- **`viable: true/false`** — does this work physically?
+- **`outcome`** — what actually happens to the crew
+- **`timeline`** — the forked story path
+- **`physics_note`** — the real number that makes or breaks it (e.g., "Your burn of 25 m/s puts reentry angle at 8.2° — skip-out. Crew lost.")
+
+***
+
+### C3 — Mission Forking (Alternate Timelines)
+
+Every decision that passes through `/evaluate` writes to a **timeline state** on the backend. The story branches into one of several tracked outcomes: 
+
+| Your Decision | Physics Check | Outcome Branch |
+|--------------|--------------|----------------|
+| PC+2 burn correct (30.7 m/s) | ✅ Reentry 6.49° | **NOMINAL — Pacific splashdown** |
+| Burn too early | ❌ Wrong trajectory | **TIMELINE B — skips atmosphere, lost** |
+| Ignore CO2 warning | ❌ >15 mmHg CO2 | **TIMELINE C — crew incapacitation at T+80h** |
+| Wrong power shedding | ❌ Battery depletes | **TIMELINE D — guidance failure, no reentry** |
+| All correct | ✅✅✅ | **REAL HISTORY — April 17 splashdown** |
+
+The LLM characters **know which timeline they're in**. RETRO in Timeline B doesn't pretend the crew will make it — he gives you the honest physics of what went wrong. 
+
+***
+
+## Implementation Order
+
+1. **Week 1** — Install `chromadb` + `sentence-transformers`, parse the NASA transcript txt, build the vector store, inject nearest chunks into `/chat` system prompt. Test that characters cite real data.
+2. **Week 2** — Build `physics.py` with the 3 key evaluators (burn, power, CO2). Add `/evaluate` endpoint. Wire decision buttons in `App.jsx` to hit `/evaluate` before resolving.
+3. **Week 3** — Add `timeline_state` to backend session, pass it to every character's system prompt. Characters now speak differently depending on which fork you're in.
+4. **Week 4** — Character movement in `World.jsx` with `@react-spring/three` springs, triggered by crisis events and timeline forks.
+
+The NASA transcript is available at [history.nasa.gov/alsj/a13/a13transcript.html](https://history.nasa.gov/alsj/a13/a13transcript.html) — it's public domain and machine-readable.

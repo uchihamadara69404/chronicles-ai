@@ -3,30 +3,65 @@ import { useFrame } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 
 const ROLES = {
-  'KRANZ':  { title: 'Flight Director',       color: '#ffffff', bio: 'Gene Kranz. In charge of everything. His word is final.' },
-  'ENG-1':  { title: 'FIDO — Flight Dynamics', color: '#4af0c0', bio: 'Tracks spacecraft trajectory and orbital mechanics.' },
-  'ENG-2':  { title: 'GUIDO — Guidance',       color: '#4af0c0', bio: 'Monitors onboard guidance computer systems.' },
-  'ENG-3':  { title: 'TELMU — Electrical',     color: '#4af0c0', bio: 'Monitors power and life support systems.' },
-  'ENG-4':  { title: 'RETRO — Retrofire',      color: '#4a8ff0', bio: 'Calculates re-entry burn procedures.' },
+  'KRANZ':  { title: 'Flight Director',        color: '#ffffff', bio: 'Gene Kranz. In charge of everything. His word is final.' },
+  'ENG-1':  { title: 'FIDO — Flight Dynamics',  color: '#4af0c0', bio: 'Tracks spacecraft trajectory and orbital mechanics.' },
+  'ENG-2':  { title: 'GUIDO — Guidance',        color: '#4af0c0', bio: 'Monitors onboard guidance computer systems.' },
+  'ENG-3':  { title: 'TELMU — Electrical',      color: '#4af0c0', bio: 'Monitors power and life support systems.' },
+  'ENG-4':  { title: 'RETRO — Retrofire',       color: '#4a8ff0', bio: 'Calculates re-entry burn procedures.' },
   'ENG-5':  { title: 'SURGEON — Flight Surgeon', color: '#4a8ff0', bio: 'Monitors crew health and vital signs.' },
 }
 
-export default function Character({ position, color, name, onSelect, isSelected, isAlert, isTalking }) {
-  const bodyRef = useRef()
-  const headRef = useRef()
-  const groupRef = useRef()
+const LERP_SPEED = 0.04  // smooth walk feel — adjust 0.02 (slow) to 0.08 (brisk)
+
+export default function Character({
+  position,       // [x, y, z] — static home/crisis target from World
+  color,
+  name,
+  onSelect,
+  isSelected,
+  isAlert,
+  isTalking,
+}) {
+  const bodyRef     = useRef()
+  const headRef     = useRef()
+  const groupRef    = useRef()
   const glowRingRef = useRef()
 
+  // Current interpolated position (starts at target)
+  const currentPos = useRef([...position])
+
   useFrame((state) => {
-    const t = state.clock.getElapsedTime()
+    const t    = state.clock.getElapsedTime()
     const seed = position[0] * 3.7 + position[2] * 1.3
 
-    if (bodyRef.current) {
-      const speed = isTalking ? 6 : 2
-      const amp = isTalking ? 0.08 : 0.04
-      bodyRef.current.position.y = 0.6 + Math.sin(t * speed + seed) * amp
+    // ── Smooth movement (lerp toward target) ──────────────────────────
+    if (groupRef.current) {
+      const [cx, cy, cz] = currentPos.current
+      const [tx, , tz]   = position
+
+      const nx = cx + (tx - cx) * LERP_SPEED
+      const nz = cz + (tz - cz) * LERP_SPEED
+      currentPos.current = [nx, cy, nz]
+
+      // Alert micro-jitter overlaid on top of smooth position
+      const jx = isAlert ? Math.sin(t * 18 + seed) * 0.03 : 0
+      const jz = isAlert ? Math.cos(t * 16 + seed) * 0.03 : 0
+
+      groupRef.current.position.x = nx + jx
+      groupRef.current.position.z = nz + jz
     }
 
+    // ── Body bob ──────────────────────────────────────────────────────
+    if (bodyRef.current) {
+      const speed = isTalking ? 6 : 2
+      const amp   = isTalking ? 0.08 : 0.04
+      // Extra bob when moving (distance to target > threshold)
+      const dist  = Math.abs(position[0] - currentPos.current[0]) + Math.abs(position[2] - currentPos.current[2])
+      const walkAmp = dist > 0.1 ? 0.06 : 0
+      bodyRef.current.position.y = 0.6 + Math.sin(t * speed + seed) * (amp + walkAmp)
+    }
+
+    // ── Head look ────────────────────────────────────────────────────
     if (headRef.current) {
       if (isTalking) {
         headRef.current.rotation.y = Math.sin(t * 4 + seed) * 0.25
@@ -37,14 +72,7 @@ export default function Character({ position, color, name, onSelect, isSelected,
       }
     }
 
-    if (isAlert && groupRef.current) {
-      groupRef.current.position.x = position[0] + Math.sin(t * 18 + seed) * 0.03
-      groupRef.current.position.z = position[2] + Math.cos(t * 16 + seed) * 0.03
-    } else if (groupRef.current) {
-      groupRef.current.position.x = position[0]
-      groupRef.current.position.z = position[2]
-    }
-
+    // ── Talking glow ring ────────────────────────────────────────────
     if (glowRingRef.current) {
       glowRingRef.current.material.opacity = isTalking
         ? 0.4 + Math.sin(t * 8) * 0.4
@@ -52,11 +80,15 @@ export default function Character({ position, color, name, onSelect, isSelected,
     }
   })
 
-  const role = ROLES[name] || {}
+  const role      = ROLES[name] || {}
   const glowColor = isTalking ? '#ffff00' : (isSelected ? '#ffff00' : (isAlert ? '#ff4400' : color))
 
   return (
-    <group ref={groupRef} position={position} onClick={(e) => { e.stopPropagation(); onSelect({ name, ...role }) }}>
+    <group
+      ref={groupRef}
+      position={position}
+      onClick={(e) => { e.stopPropagation(); onSelect({ name, ...role }) }}
+    >
       {/* Click hitbox */}
       <mesh position={[0, 0.6, 0]}>
         <boxGeometry args={[0.6, 1.4, 0.6]} />

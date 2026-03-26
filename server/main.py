@@ -1,12 +1,21 @@
 import os
+import sys
 import io
+import uuid
 import asyncio
 import edge_tts
+
+# Ensure server/ directory is on path so physics.py can be imported
+sys.path.insert(0, os.path.dirname(__file__))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from groq import Groq
+from physics import (
+    evaluate_burn, evaluate_power, evaluate_co2,
+    get_transcript_context
+)
 
 app = FastAPI()
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
@@ -17,6 +26,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# In-memory timeline state (keyed by session_id)
+TIMELINE_STATES: dict[str, dict] = {}
 
 CHARACTERS = {
     "KRANZ": {
@@ -115,15 +127,40 @@ The mission now has one objective: get these three men home alive.
 The room is tense. Every person here knows what's at stake.
 """
 
+TIMELINE_DESCRIPTIONS = {
+    "A": "NOMINAL — Crew on track for April 17 Pacific splashdown.",
+    "B": "SKIP-OUT — Spacecraft skipped off atmosphere. Vehicle lost.",
+    "C": "BURNUP / CO2 — Heat shield failure or crew incapacitation.",
+    "D": "POWER FAILURE — Batteries depleted. Guidance offline.",
+}
+
+
+# ─────────────────────────────────────────
+# Request Models
+# ─────────────────────────────────────────
+
 class ChatRequest(BaseModel):
     character: str
     message: str
     history: list = []
     shared_context: list = []
+    session_id: str = "default"
+    mission_met: float = 55.92
 
 class TTSRequest(BaseModel):
     character: str
     text: str
+
+class EvaluateRequest(BaseModel):
+    command_type: str          # "burn" | "power" | "co2"
+    params: dict               # type-specific params
+    session_id: str = "default"
+    mission_met: float = 55.92
+
+
+# ─────────────────────────────────────────
+# /chat
+# ─────────────────────────────────────────
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
@@ -131,10 +168,27 @@ async def chat(req: ChatRequest):
     if not char:
         return {"response": "Unknown character."}
 
+    # Shared cross-character context
     shared_ctx_text = ""
     if req.shared_context:
         lines = [f"  [{item['char']}]: {item['text']}" for item in req.shared_context[-4:]]
-        shared_ctx_text = "\n\nRECENT MISSION EXCHANGES (what other stations have said):\n" + "\n".join(lines)
+        shared_ctx_text = "\n\nRECENT MISSION EXCHANGES (other stations):\n" + "\n".join(lines)
+
+    # Real transcript context — nearest entries to current MET
+    transcript_entries = get_transcript_context(req.mission_met, n=2)
+    transcript_text = "\n\nACTUAL TRANSCRIPT AT THIS MISSION TIME:\n" + "\n".join(
+        f'  [T+{e["met"]:.2f}h] {e["speaker"]}: "{e["line"]}" — {e["note"]}'
+        for e in transcript_entries
+    )
+
+    # Timeline state
+    timeline = TIMELINE_STATES.get(req.session_id, {})
+    timeline_text = ""
+    if timeline:
+        branch = timeline.get("branch", "A")
+        timeline_text = f"\n\nCURRENT MISSION TIMELINE: {TIMELINE_DESCRIPTIONS.get(branch, branch)}"
+        if branch != "A":
+            timeline_text += "\nIMPORTANT: You know the outcome of the decisions made. React accordingly — be honest about what went wrong."
 
     system_prompt = f"""You are {char['name']}, {char['role']}.
 
@@ -150,7 +204,8 @@ RULES:
 - Use contractions. Use incomplete sentences when appropriate. Think out loud if it fits your character.
 - Never say you are an AI. Never break character.
 - If asked something outside your expertise, redirect to what you DO know.
-- If shared context shows what other stations said, you may reference it naturally.{shared_ctx_text}"""
+- When referencing numbers or data, use the actual values from the transcript context below.
+- If shared context shows what other stations said, you may reference it naturally.{transcript_text}{timeline_text}{shared_ctx_text}"""
 
     messages = []
     for h in req.history[-8:]:
@@ -166,6 +221,75 @@ RULES:
 
     return {"response": response.choices[0].message.content}
 
+
+# ─────────────────────────────────────────
+# /evaluate  — physics engine endpoint
+# ─────────────────────────────────────────
+
+@app.post("/evaluate")
+async def evaluate(req: EvaluateRequest):
+    result = None
+
+    if req.command_type == "burn":
+        delta_v = float(req.params.get("delta_v_ms", 30.7))
+        met     = float(req.params.get("met_hours", 79.46))
+        result  = evaluate_burn(delta_v, met)
+
+    elif req.command_type == "power":
+        load_amps = float(req.params.get("load_amps", 43.0))
+        result    = evaluate_power(load_amps)
+
+    elif req.command_type == "co2":
+        materials = req.params.get("materials", [])
+        result    = evaluate_co2(materials)
+
+    else:
+        return {"error": f"Unknown command_type: {req.command_type}"}
+
+    # Update timeline state
+    if result:
+        branch_map = {
+            "TIMELINE A": "A",
+            "TIMELINE B": "B",
+            "TIMELINE C": "C",
+            "TIMELINE D": "D",
+        }
+        branch = "A"
+        for key, val in branch_map.items():
+            if result["timeline"].startswith(key):
+                branch = val
+                break
+
+        if req.session_id not in TIMELINE_STATES:
+            TIMELINE_STATES[req.session_id] = {"branch": "A", "decisions": []}
+
+        # Only downgrade (never recover from a bad branch)
+        current = TIMELINE_STATES[req.session_id]["branch"]
+        if branch != "A" or current == "A":
+            TIMELINE_STATES[req.session_id]["branch"] = branch
+
+        TIMELINE_STATES[req.session_id]["decisions"].append({
+            "type": req.command_type,
+            "params": req.params,
+            "result": result,
+            "met": req.mission_met,
+        })
+
+    # Also inject nearest transcript context
+    transcript = get_transcript_context(req.mission_met, n=1)
+
+    return {
+        **result,
+        "session_id": req.session_id,
+        "timeline_state": TIMELINE_STATES.get(req.session_id, {}),
+        "transcript_context": transcript,
+    }
+
+
+# ─────────────────────────────────────────
+# /tts
+# ─────────────────────────────────────────
+
 @app.post("/tts")
 async def tts(req: TTSRequest):
     char = CHARACTERS.get(req.character)
@@ -173,7 +297,7 @@ async def tts(req: TTSRequest):
         return {"error": "Unknown character"}
 
     voice = char.get("voice", "en-US-GuyNeural")
-    rate = char.get("rate", "+0%")
+    rate  = char.get("rate", "+0%")
     pitch = char.get("pitch", "+0Hz")
 
     communicate = edge_tts.Communicate(req.text, voice, rate=rate, pitch=pitch)

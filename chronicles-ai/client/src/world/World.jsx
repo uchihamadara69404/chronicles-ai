@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import Tile from './Tile'
 import Character from '../characters/Character'
 
@@ -34,16 +33,24 @@ const TILE_HEIGHTS = {
   3: 0.2,
 }
 
-const CHARACTERS = [
-  { id: 'kranz',     position: [0, 0, 2],   color: '#ffffff', name: 'KRANZ'  },
-  { id: 'engineer1', position: [-4, 0, -1], color: '#4af0c0', name: 'ENG-1'  },
-  { id: 'engineer2', position: [0, 0, -1],  color: '#4af0c0', name: 'ENG-2'  },
-  { id: 'engineer3', position: [4, 0, -1],  color: '#4af0c0', name: 'ENG-3'  },
-  { id: 'engineer4', position: [-4, 0, -4], color: '#4a8ff0', name: 'ENG-4'  },
-  { id: 'engineer5', position: [4, 0, -4],  color: '#4a8ff0', name: 'ENG-5'  },
+// Static character definitions — position is the HOME position
+// charPositions prop overrides with current target per character
+const CHARACTER_DEFS = [
+  { id: 'kranz',     name: 'KRANZ',  color: '#ffffff', home: [0,  0,  2]  },
+  { id: 'engineer1', name: 'ENG-1',  color: '#4af0c0', home: [-4, 0, -1]  },
+  { id: 'engineer2', name: 'ENG-2',  color: '#4af0c0', home: [0,  0, -1]  },
+  { id: 'engineer3', name: 'ENG-3',  color: '#4af0c0', home: [4,  0, -1]  },
+  { id: 'engineer4', name: 'ENG-4',  color: '#4a8ff0', home: [-4, 0, -4]  },
+  { id: 'engineer5', name: 'ENG-5',  color: '#4a8ff0', home: [4,  0, -4]  },
 ]
 
-export default function World({ isAlert, onCharacterSelect, selectedChar, talkingChar }) {
+export default function World({
+  isAlert,
+  onCharacterSelect,
+  selectedChar,
+  talkingChar,
+  charPositions,   // { [charKey]: [x, y, z] } — from App.jsx
+}) {
   const offsetX = -(MAP[0].length / 2)
   const offsetZ = -(MAP.length / 2)
 
@@ -59,18 +66,22 @@ export default function World({ isAlert, onCharacterSelect, selectedChar, talkin
           />
         ))
       )}
-      {CHARACTERS.map(c => (
-        <Character
-          key={c.id}
-          position={c.position}
-          color={c.color}
-          name={c.name}
-          onSelect={onCharacterSelect}
-          isSelected={selectedChar?.name === c.name}
-          isAlert={isAlert}
-          isTalking={talkingChar === c.name}
-        />
-      ))}
+      {CHARACTER_DEFS.map(c => {
+        // Use dynamic position if provided, else home position
+        const pos = charPositions?.[c.name] ?? c.home
+        return (
+          <Character
+            key={c.id}
+            position={pos}
+            color={c.color}
+            name={c.name}
+            onSelect={onCharacterSelect}
+            isSelected={selectedChar?.name === c.name}
+            isAlert={isAlert}
+            isTalking={talkingChar === c.name}
+          />
+        )
+      })}
     </group>
   )
 }

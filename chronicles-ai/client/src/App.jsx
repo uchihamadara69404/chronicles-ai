@@ -5,6 +5,27 @@ import World from './world/World'
 
 const API = '/api'
 
+// One session ID per page load — tracks timeline state on backend
+const SESSION_ID = Math.random().toString(36).slice(2, 10)
+
+// ── Character map positions ─────────────────────────────────────────────────
+const HOME_POSITIONS = {
+  'KRANZ': [0,  0,  2],
+  'ENG-1': [-4, 0, -1],
+  'ENG-2': [0,  0, -1],
+  'ENG-3': [4,  0, -1],
+  'ENG-4': [-4, 0, -4],
+  'ENG-5': [4,  0, -4],
+}
+
+// Where each character physically moves during a crisis broadcast
+const CRISIS_POSITIONS = {
+  'KRANZ': [0,  0,  0],    // steps forward to the director's console
+  'ENG-3': [0,  0,  1],    // TELMU rushes to the center floor
+  'ENG-4': [-2, 0, -2],    // RETRO moves closer to main floor
+  'ENG-5': [2,  0, -2],    // Doc moves toward comms station
+}
+
 const CHAR_COLORS = {
   'KRANZ': '#ff6600', 'ENG-1': '#4af', 'ENG-2': '#88f',
   'ENG-3': '#4af0c0', 'ENG-4': '#aaf', 'ENG-5': '#ffa0a0',
@@ -23,6 +44,7 @@ const QUICK_PROMPTS = {
   'ENG-5':  ["How is the crew holding up?", "Are they in danger?", "What are their vitals?"],
 }
 
+// Mission events — fire at session seconds
 const MISSION_EVENTS = [
   { id: 'e1', at: 8,   charKey: 'KRANZ',  text: "All stations — verify your systems. Stay sharp tonight." },
   { id: 'e2', at: 30,  charKey: 'ENG-3',  text: "Flight, showing anomalous O2 tank 2 heater cycling. Watching it." },
@@ -31,21 +53,32 @@ const MISSION_EVENTS = [
   {
     id: 'e5', at: 200, charKey: 'ENG-3',
     text: "FLIGHT — MASTER ALARM. Tank 2 pressure spike then dropout. I've lost SM O2 tank 2 telemetry.",
-    decision: {
-      question: "FLIGHT DIRECTOR: Major anomaly confirmed. Your call —",
-      options: ["DECLARE EMERGENCY", "HOLD AND MONITOR"],
-    },
+    decision: { question: "FLIGHT DIRECTOR: Major anomaly confirmed. Your call —", options: ["DECLARE EMERGENCY", "HOLD AND MONITOR"] },
   },
-  { id: 'e6', at: 240, charKey: 'ENG-1',  text: "Flight, I'm showing attitude disturbance. Something vented from the SM." },
+  { id: 'e6', at: 240, charKey: 'ENG-1', text: "Flight, I'm showing attitude disturbance. Something vented from the SM." },
 ]
 
 const CRISIS_EVENTS = [
-  { id: 'c1', at: 10,  charKey: 'ENG-3',  text: "Power is at 27 amps and dropping fast. We need to start shedding load NOW." },
-  { id: 'c2', at: 40,  charKey: 'ENG-4',  text: "PC+2 burn window opens at 79:30 MET. That's our best shot at Pacific splashdown." },
-  { id: 'c3', at: 85,  charKey: 'ENG-5',  text: "Cabin temp is dropping. At this rate — 38 degrees Fahrenheit in six hours. Hypothermia is a real risk." },
-  { id: 'c4', at: 135, charKey: 'KRANZ',  text: "People — I want solutions, not problems. What do we HAVE to work with? Work the problem." },
-  { id: 'c5', at: 200, charKey: 'ENG-2',  text: "Flight, CO2 scrubbers in the LEM saturate in roughly 87 hours. Square canisters from Odyssey won't fit Aquarius's round holes." },
-  { id: 'c6', at: 280, charKey: 'ENG-5',  text: "Lovell's reporting 3.5 rem radiation exposure. Nothing critical yet, but I'm watching the number." },
+  { id: 'c1', at: 10,  charKey: 'ENG-3', text: "Power is at 27 amps and dropping fast. We need to start shedding load NOW." },
+  {
+    id: 'c2', at: 40,  charKey: 'ENG-4',
+    text: "PC+2 burn window opens at T+79:27. That's our best shot at Pacific splashdown — 30.7 m/s, DPS engine.",
+    evalTrigger: { type: 'burn', params: { delta_v_ms: 30.7, met_hours: 79.46 }, label: 'PC+2 BURN EVALUATION' },
+  },
+  { id: 'c3', at: 85,  charKey: 'ENG-5', text: "Cabin temp is dropping. At this rate — 38°F in six hours. Hypothermia is a real risk." },
+  {
+    id: 'c4', at: 120, charKey: 'ENG-3',
+    text: "I'm shedding load to 12 amps. That gives us 87 hours of return power — barely.",
+    evalTrigger: { type: 'power', params: { load_amps: 12 }, label: 'POWER BUDGET EVALUATION' },
+  },
+  { id: 'c5', at: 135, charKey: 'KRANZ', text: "People — I want solutions, not problems. What do we HAVE to work with? Work the problem." },
+  { id: 'c6', at: 200, charKey: 'ENG-2', text: "Flight, CO2 scrubbers in the LEM saturate in roughly 87 hours. Square canisters from Odyssey won't fit Aquarius's round holes." },
+  {
+    id: 'c7', at: 250, charKey: 'ENG-3',
+    text: "Tiger Team says: cardboard, plastic bag, sock, hose, duct tape. The mailbox fix.",
+    evalTrigger: { type: 'co2', params: { materials: ['cardboard', 'plastic bag', 'sock', 'hose', 'duct tape'] }, label: 'CO2 FIX EVALUATION' },
+  },
+  { id: 'c8', at: 310, charKey: 'ENG-5', text: "Lovell reporting 3.5 rem radiation. Nothing critical — yet." },
 ]
 
 const INTRO_LINES = [
@@ -67,48 +100,50 @@ const INTRO_LINES = [
 const INTRO_FULL = INTRO_LINES.join('\n')
 
 export default function App() {
-  const [selectedChar, setSelectedChar] = useState(null)
-  const [isAlert, setIsAlert] = useState(false)
-  const [message, setMessage] = useState('')
-  const [history, setHistory] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [listening, setListening] = useState(false)
-  const [talkingChar, setTalkingChar] = useState(null)
-  const [o2, setO2] = useState(100)
-  const [power, setPower] = useState(100)
-  const [missionTime, setMissionTime] = useState(0)
-
-  // New state
-  const [introPhase, setIntroPhase] = useState('typing')
-  const [introText, setIntroText] = useState('')
-  const [broadcast, setBroadcast] = useState(null)
-  const [sharedLog, setSharedLog] = useState([])
-  const [telemetry, setTelemetry] = useState({ alt: 199340, vel: 1.53, co2: 2.5, temp: 21.0, batt: 29.5 })
+  const [selectedChar,    setSelectedChar]    = useState(null)
+  const [isAlert,         setIsAlert]         = useState(false)
+  const [message,         setMessage]         = useState('')
+  const [history,         setHistory]         = useState([])
+  const [loading,         setLoading]         = useState(false)
+  const [listening,       setListening]       = useState(false)
+  const [talkingChar,     setTalkingChar]     = useState(null)
+  const [o2,              setO2]              = useState(100)
+  const [power,           setPower]           = useState(100)
+  const [missionTime,     setMissionTime]     = useState(0)
+  const [introPhase,      setIntroPhase]      = useState('typing')
+  const [introText,       setIntroText]       = useState('')
+  const [broadcast,       setBroadcast]       = useState(null)
+  const [sharedLog,       setSharedLog]       = useState([])
+  const [telemetry,       setTelemetry]       = useState({ alt: 199340, vel: 1.53, co2: 2.5, temp: 21.0, batt: 29.5 })
   const [pendingDecision, setPendingDecision] = useState(null)
-  const [audioReady, setAudioReady] = useState(false)
+  const [audioReady,      setAudioReady]      = useState(false)
+  const [charPositions,   setCharPositions]   = useState({ ...HOME_POSITIONS })
+  const [evalResult,      setEvalResult]      = useState(null)
+  const [timelineBranch,  setTimelineBranch]  = useState('A')
 
-  const chatEndRef = useRef(null)
-  const recognitionRef = useRef(null)
-  const alertRef = useRef(isAlert)
-  alertRef.current = isAlert
-  const audioCtxRef = useRef(null)
-  const firedEventsRef = useRef(new Set())
-  const crisisEventsRef = useRef(new Set())
+  const chatEndRef        = useRef(null)
+  const recognitionRef    = useRef(null)
+  const alertRef          = useRef(isAlert)
+  alertRef.current        = isAlert
+  const audioCtxRef       = useRef(null)
+  const firedEventsRef    = useRef(new Set())
+  const crisisEventsRef   = useRef(new Set())
   const alertStartTimeRef = useRef(null)
-  const touchStartXRef = useRef(null)
+  const touchStartXRef    = useRef(null)
   const broadcastTimerRef = useRef(null)
-  const missionTimeRef = useRef(0)
-  missionTimeRef.current = missionTime
+  const missionTimeRef    = useRef(0)
+  missionTimeRef.current  = missionTime
 
   const voiceSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
 
-  // Scroll chat to bottom
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [history])
+  // ── Derived mission MET (for backend transcript context) ───────────────────
+  const missionMet = () => 55.92 + missionTimeRef.current / 3600
 
-  // Intro typewriter
+  // ── Scroll chat ────────────────────────────────────────────────────────────
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [history])
+
+  // ── Intro typewriter ───────────────────────────────────────────────────────
   useEffect(() => {
     if (introPhase !== 'typing') return
     let i = 0
@@ -120,7 +155,7 @@ export default function App() {
     return () => clearInterval(iv)
   }, [introPhase])
 
-  // Main timer
+  // ── Main timer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const timer = setInterval(() => {
       setMissionTime(t => t + 1)
@@ -139,43 +174,83 @@ export default function App() {
     return () => clearInterval(timer)
   }, [])
 
-  // Scripted mission events
+  // ── Scripted events ────────────────────────────────────────────────────────
   useEffect(() => {
     if (introPhase !== 'done') return
     MISSION_EVENTS.forEach(ev => {
       if (!firedEventsRef.current.has(ev.id) && missionTime >= ev.at) {
         firedEventsRef.current.add(ev.id)
         showBroadcast(ev.charKey, ev.text)
-        if (ev.decision) {
-          setTimeout(() => setPendingDecision(ev.decision), 6000)
-        }
+        if (ev.decision) setTimeout(() => setPendingDecision(ev.decision), 6000)
       }
     })
   }, [missionTime, introPhase])
 
-  // Crisis scripted events
   useEffect(() => {
     if (!isAlert) return
-    if (alertStartTimeRef.current === null) {
-      alertStartTimeRef.current = missionTimeRef.current
-    }
+    if (alertStartTimeRef.current === null) { alertStartTimeRef.current = missionTimeRef.current; return }
     const elapsed = missionTime - alertStartTimeRef.current
     CRISIS_EVENTS.forEach(ev => {
       if (!crisisEventsRef.current.has(ev.id) && elapsed >= ev.at) {
         crisisEventsRef.current.add(ev.id)
         showBroadcast(ev.charKey, ev.text)
+        if (ev.evalTrigger) {
+          setTimeout(() => runEvaluation(ev.evalTrigger.type, ev.evalTrigger.params, ev.evalTrigger.label), 4000)
+        }
       }
     })
   }, [missionTime, isAlert])
 
+  // ── Character movement ─────────────────────────────────────────────────────
+  const moveCharacter = useCallback((charKey, crisis = false) => {
+    setCharPositions(prev => ({
+      ...prev,
+      [charKey]: crisis
+        ? (CRISIS_POSITIONS[charKey] ?? HOME_POSITIONS[charKey])
+        : HOME_POSITIONS[charKey],
+    }))
+  }, [])
+
+  const resetCharacterPositions = useCallback(() => {
+    setCharPositions({ ...HOME_POSITIONS })
+  }, [])
+
+  // ── Broadcast ─────────────────────────────────────────────────────────────
   const showBroadcast = useCallback((charKey, text) => {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
     setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
     setSharedLog(prev => [...prev.slice(-11), { char: charKey, text, time: missionTimeRef.current }])
-    broadcastTimerRef.current = setTimeout(() => setBroadcast(null), 7000)
+    // Move character to crisis position when they broadcast
+    moveCharacter(charKey, true)
+    // Return to home after 8s
+    broadcastTimerRef.current = setTimeout(() => {
+      setBroadcast(null)
+      moveCharacter(charKey, false)
+    }, 8000)
+  }, [moveCharacter])
+
+  // ── Physics evaluation ─────────────────────────────────────────────────────
+  const runEvaluation = useCallback(async (type, params, label = '') => {
+    try {
+      const res = await fetch(`${API}/evaluate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          command_type: type,
+          params,
+          session_id: SESSION_ID,
+          mission_met: missionMet(),
+        }),
+      })
+      const data = await res.json()
+      setEvalResult({ ...data, label, timestamp: missionTimeRef.current })
+      if (data.timeline_state?.branch) setTimelineBranch(data.timeline_state.branch)
+    } catch (e) {
+      console.error('Evaluate error:', e)
+    }
   }, [])
 
-  // Ambient audio init — triggered on first interaction
+  // ── Ambient audio ─────────────────────────────────────────────────────────
   const initAudio = useCallback(() => {
     if (audioCtxRef.current) return
     try {
@@ -183,8 +258,6 @@ export default function App() {
       if (!AudioContext) return
       const ctx = new AudioContext()
       audioCtxRef.current = ctx
-
-      // HVAC white noise
       const bufSize = ctx.sampleRate * 3
       const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate)
       const data = buf.getChannelData(0)
@@ -202,8 +275,6 @@ export default function App() {
       noiseFilter.connect(noiseGain)
       noiseGain.connect(ctx.destination)
       noise.start()
-
-      // 60Hz electrical hum
       const hum = ctx.createOscillator()
       hum.type = 'sawtooth'
       hum.frequency.value = 60
@@ -212,7 +283,6 @@ export default function App() {
       hum.connect(humGain)
       humGain.connect(ctx.destination)
       hum.start()
-
       setAudioReady(true)
     } catch {}
   }, [])
@@ -221,7 +291,7 @@ export default function App() {
     const ctx = audioCtxRef.current
     if (!ctx) return
     try {
-      const osc = ctx.createOscillator()
+      const osc  = ctx.createOscillator()
       const gain = ctx.createGain()
       osc.type = 'square'
       osc.connect(gain)
@@ -238,8 +308,9 @@ export default function App() {
     } catch {}
   }, [])
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
   const formatMissionTime = (secs) => {
-    const base = 55 * 3600 + 55 * 60 + 20
+    const base  = 55 * 3600 + 55 * 60 + 20
     const total = base + secs
     const h = String(Math.floor(total / 3600)).padStart(2, '0')
     const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
@@ -252,14 +323,14 @@ export default function App() {
     window.speechSynthesis.cancel()
     setTalkingChar(charName)
     const doSpeak = () => {
-      const utt = new SpeechSynthesisUtterance(text)
+      const utt    = new SpeechSynthesisUtterance(text)
       const voices = window.speechSynthesis.getVoices()
-      const enVoice = voices.find(v => v.lang.startsWith('en'))
-      if (enVoice) utt.voice = enVoice
-      utt.rate = 0.95
-      utt.pitch = 1.0
+      const en     = voices.find(v => v.lang.startsWith('en'))
+      if (en) utt.voice = en
+      utt.rate   = 0.95
+      utt.pitch  = 1.0
       utt.volume = 1
-      utt.onend = () => setTalkingChar(null)
+      utt.onend  = () => setTalkingChar(null)
       utt.onerror = () => setTalkingChar(null)
       window.speechSynthesis.speak(utt)
     }
@@ -269,59 +340,40 @@ export default function App() {
     }, 150)
   }
 
-  const stopSpeaking = () => {
-    window.speechSynthesis?.cancel()
-    setTalkingChar(null)
-  }
+  const stopSpeaking = () => { window.speechSynthesis?.cancel(); setTalkingChar(null) }
 
   const startListening = () => {
     if (!voiceSupported || listening) return
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     const rec = new SpeechRecognition()
-    rec.lang = 'en-US'
-    rec.interimResults = false
-    rec.maxAlternatives = 1
+    rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1
     recognitionRef.current = rec
-    rec.onstart = () => setListening(true)
-    rec.onerror = () => setListening(false)
-    rec.onresult = (e) => {
-      const transcript = e.results[0][0].transcript
-      setMessage(transcript)
-      rec._hasResult = true
-    }
-    rec.onend = () => {
-      setListening(false)
-      if (rec._hasResult) setTimeout(() => document.getElementById('send-btn')?.click(), 300)
-    }
+    rec.onstart  = () => setListening(true)
+    rec.onerror  = () => setListening(false)
+    rec.onresult = (e) => { const t = e.results[0][0].transcript; setMessage(t); rec._hasResult = true }
+    rec.onend    = () => { setListening(false); if (rec._hasResult) setTimeout(() => document.getElementById('send-btn')?.click(), 300) }
     rec.start()
   }
 
-  const stopListening = () => {
-    recognitionRef.current?.stop()
-    setListening(false)
-  }
+  const stopListening = () => { recognitionRef.current?.stop(); setListening(false) }
 
-  const handleSelect = (char) => {
-    stopSpeaking()
-    setSelectedChar(char)
-    setHistory([])
-    setMessage('')
-  }
+  const handleSelect = (char) => { stopSpeaking(); setSelectedChar(char); setHistory([]); setMessage('') }
 
   const handleCrisisToggle = () => {
     const next = !isAlert
     setIsAlert(next)
     setSelectedChar(null)
     if (next) {
-      setO2(82)
-      setPower(74)
+      setO2(82); setPower(74)
       alertStartTimeRef.current = missionTimeRef.current
       playAlarm()
+      moveCharacter('KRANZ', true)
+      moveCharacter('ENG-3', true)
     } else {
-      setO2(100)
-      setPower(100)
+      setO2(100); setPower(100)
       alertStartTimeRef.current = null
       crisisEventsRef.current = new Set()
+      resetCharacterPositions()
     }
   }
 
@@ -329,18 +381,18 @@ export default function App() {
     setPendingDecision(null)
     setSharedLog(prev => [...prev.slice(-11), { char: 'FLIGHT', text: `DECISION: ${option}`, time: missionTimeRef.current }])
     if (option === 'DECLARE EMERGENCY') {
-      setIsAlert(true)
-      setO2(82)
-      setPower(74)
+      setIsAlert(true); setO2(82); setPower(74)
       alertStartTimeRef.current = missionTimeRef.current
       playAlarm()
-      showBroadcast('KRANZ', "This is now a contingency. All stations — we are declaring an emergency. Failure is not an option.")
+      moveCharacter('KRANZ', true)
+      moveCharacter('ENG-3', true)
+      showBroadcast('KRANZ', "This is now a contingency. All stations — declaring an emergency. Failure is not an option.")
     } else {
       showBroadcast('KRANZ', "Copy. All stations, stand by. Continue monitoring. I want answers in five minutes.")
       setTimeout(() => {
-        showBroadcast('ENG-3', "Flight — we can't hold anymore. Complete loss of SM O2 tank 2. This is not recoverable.")
+        showBroadcast('ENG-3', "Flight — can't hold anymore. Complete loss of SM O2 tank 2. Not recoverable.")
         setTimeout(() => setPendingDecision({
-          question: "Tank 2 is confirmed gone. Crew safety at risk. Your call —",
+          question: "Tank 2 confirmed gone. Crew at risk. Your call —",
           options: ["DECLARE EMERGENCY", "CONTINUE ASSESSMENT"],
         }), 6000)
       }, 30000)
@@ -366,9 +418,11 @@ export default function App() {
           message: msg,
           history: history.slice(-8).map(h => ({ role: h.role, content: h.content })),
           shared_context: sharedLog.slice(-4).map(e => ({ char: e.char, text: e.text })),
+          session_id: SESSION_ID,
+          mission_met: missionMet(),
         }),
       })
-      const data = await res.json()
+      const data  = await res.json()
       const reply = data.response
       const replyTime = missionTimeRef.current
       setHistory([...newHistory, { role: 'assistant', content: reply, time: replyTime }])
@@ -382,30 +436,20 @@ export default function App() {
 
   const exportTranscript = () => {
     if (sharedLog.length === 0) return
-    const lines = [`APOLLO 13 MISSION TRANSCRIPT`, `Generated: ${formatMissionTime(missionTimeRef.current)}`, `${'═'.repeat(42)}`, '']
-    sharedLog.forEach(e => {
-      lines.push(`[${formatMissionTime(e.time)}] ${CHAR_LABELS[e.char] || e.char}`)
-      lines.push(e.text)
-      lines.push('')
-    })
+    const lines = [`APOLLO 13 MISSION TRANSCRIPT`, `Generated: ${formatMissionTime(missionTimeRef.current)}`, `Timeline: ${timelineBranch}`, `${'═'.repeat(42)}`, '']
+    sharedLog.forEach(e => { lines.push(`[${formatMissionTime(e.time)}] ${CHAR_LABELS[e.char] || e.char}`); lines.push(e.text); lines.push('') })
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'apollo13-transcript.txt'
-    a.click()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = 'apollo13-transcript.txt'; a.click()
     URL.revokeObjectURL(url)
   }
 
-  const gaugeColor = (val) => {
-    if (val > 60) return '#4af0c0'
-    if (val > 30) return '#ffaa00'
-    return '#ff4400'
-  }
+  const gaugeColor = (val) => val > 60 ? '#4af0c0' : val > 30 ? '#ffaa00' : '#ff4400'
 
   const telColor = (key, val) => {
-    if (key === 'co2' && val > 7) return '#ff4400'
-    if (key === 'co2' && val > 4) return '#ffaa00'
+    if (key === 'co2'  && val > 7)  return '#ff4400'
+    if (key === 'co2'  && val > 4)  return '#ffaa00'
     if (key === 'temp' && val < 10) return '#4af'
     if (key === 'temp' && val < 15) return '#ffaa00'
     if (key === 'batt' && val < 20) return '#ff4400'
@@ -413,16 +457,18 @@ export default function App() {
     return '#4af0c0'
   }
 
-  const handleGlobalClick = () => {
-    if (introPhase !== 'done') {
-      setIntroPhase('done')
-      initAudio()
-    }
+  const BRANCH_COLORS = { A: '#4af0c0', B: '#ff4400', C: '#ff8800', D: '#ff4400' }
+  const BRANCH_LABELS = {
+    A: 'NOMINAL', B: 'SKIP-OUT · CREW LOST',
+    C: 'CO2/BURNUP', D: 'POWER FAILURE',
   }
 
-  // Swipe-to-close chat panel
+  const handleGlobalClick = () => {
+    if (introPhase !== 'done') { setIntroPhase('done'); initAudio() }
+  }
+
   const onChatTouchStart = (e) => { touchStartXRef.current = e.touches[0].clientX }
-  const onChatTouchEnd = (e) => {
+  const onChatTouchEnd   = (e) => {
     if (touchStartXRef.current === null) return
     const dx = e.changedTouches[0].clientX - touchStartXRef.current
     if (dx < -60) { stopSpeaking(); setSelectedChar(null) }
@@ -435,11 +481,17 @@ export default function App() {
         <ambientLight intensity={isAlert ? 0.2 : 0.4} />
         <directionalLight position={[10, 20, 10]} intensity={1} castShadow />
         <pointLight position={[0, 5, 0]} color={isAlert ? '#ff0000' : '#4466ff'} intensity={isAlert ? 1.5 : 0.3} />
-        <World isAlert={isAlert} onCharacterSelect={handleSelect} selectedChar={selectedChar} talkingChar={talkingChar} />
+        <World
+          isAlert={isAlert}
+          onCharacterSelect={handleSelect}
+          selectedChar={selectedChar}
+          talkingChar={talkingChar}
+          charPositions={charPositions}
+        />
         <OrbitControls maxPolarAngle={Math.PI / 2.8} minDistance={8} maxDistance={25} />
       </Canvas>
 
-      {/* INTRO OVERLAY */}
+      {/* INTRO */}
       {introPhase !== 'done' && (
         <div className="intro-overlay" onClick={handleGlobalClick}>
           <pre className="intro-text">{introText}<span className="intro-cursor">█</span></pre>
@@ -453,10 +505,11 @@ export default function App() {
         </span>
         <span className="topbar-clock">{formatMissionTime(missionTime)}</span>
         <div className="topbar-actions">
+          <span className="timeline-badge" style={{ color: BRANCH_COLORS[timelineBranch] }}>
+            {BRANCH_LABELS[timelineBranch]}
+          </span>
           {sharedLog.length > 0 && (
-            <button className="export-btn" onClick={e => { e.stopPropagation(); exportTranscript() }} title="Export mission log">
-              ⬇ LOG
-            </button>
+            <button className="export-btn" onClick={e => { e.stopPropagation(); exportTranscript() }}>⬇ LOG</button>
           )}
           <button className="crisis-btn" onClick={e => { e.stopPropagation(); handleCrisisToggle() }}
             style={{ background: isAlert ? '#ff4400' : '#1a3a6a' }}>
@@ -465,12 +518,10 @@ export default function App() {
         </div>
       </div>
 
-      {/* BROADCAST BAR */}
+      {/* BROADCAST */}
       {broadcast && (
         <div className="broadcast" style={{ borderLeft: `3px solid ${broadcast.color}` }}>
-          <span className="broadcast-who" style={{ color: broadcast.color }}>
-            {CHAR_LABELS[broadcast.charKey] || broadcast.charKey}
-          </span>
+          <span className="broadcast-who" style={{ color: broadcast.color }}>{CHAR_LABELS[broadcast.charKey] || broadcast.charKey}</span>
           <span className="broadcast-text">{broadcast.text}</span>
         </div>
       )}
@@ -490,21 +541,19 @@ export default function App() {
           </div>
         ))}
         <div className="hud-crew">
-          CREW: {isAlert
-            ? <span style={{ color: '#ff8800' }}>⚠ AT RISK</span>
-            : <span style={{ color: '#4af0c0' }}>NOMINAL</span>}
+          CREW: {isAlert ? <span style={{ color: '#ff8800' }}>⚠ AT RISK</span> : <span style={{ color: '#4af0c0' }}>NOMINAL</span>}
         </div>
       </div>
 
-      {/* TELEMETRY PANEL */}
+      {/* TELEMETRY */}
       <div className="telemetry" style={{ border: `1px solid ${isAlert ? '#ff4400' : '#1a3a6a'}` }}>
         <div className="hud-label">TELEMETRY</div>
         {[
-          { key: 'alt',  label: 'ALT',  val: telemetry.alt.toFixed(0),    unit: 'km' },
-          { key: 'vel',  label: 'VEL',  val: telemetry.vel.toFixed(3),    unit: 'km/s' },
-          { key: 'co2',  label: 'CO₂',  val: telemetry.co2.toFixed(1),    unit: 'mmHg' },
-          { key: 'temp', label: 'TEMP', val: telemetry.temp.toFixed(1),   unit: '°C' },
-          { key: 'batt', label: 'BATT', val: telemetry.batt.toFixed(1),   unit: 'V' },
+          { key: 'alt',  label: 'ALT',  val: telemetry.alt.toFixed(0),  unit: 'km'   },
+          { key: 'vel',  label: 'VEL',  val: telemetry.vel.toFixed(3),  unit: 'km/s' },
+          { key: 'co2',  label: 'CO₂',  val: telemetry.co2.toFixed(1),  unit: 'mmHg' },
+          { key: 'temp', label: 'TEMP', val: telemetry.temp.toFixed(1), unit: '°C'   },
+          { key: 'batt', label: 'BATT', val: telemetry.batt.toFixed(1), unit: 'V'    },
         ].map(({ key, label, val, unit }) => (
           <div key={key} className="telem-row">
             <span className="telem-label">{label}</span>
@@ -514,6 +563,28 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {/* PHYSICS EVALUATION RESULT */}
+      {evalResult && (
+        <div className="eval-panel" style={{ borderColor: evalResult.viable ? '#4af0c0' : '#ff4400' }}
+          onClick={e => e.stopPropagation()}>
+          <div className="eval-header">
+            <span className="eval-label">{evalResult.label || 'PHYSICS EVALUATION'}</span>
+            <button className="btn-close" onClick={() => setEvalResult(null)}>✕</button>
+          </div>
+          <div className="eval-timeline" style={{ color: evalResult.viable ? '#4af0c0' : '#ff4400' }}>
+            {evalResult.timeline}
+          </div>
+          <div className="eval-outcome">{evalResult.outcome}</div>
+          <div className="eval-physics">{evalResult.physics_note}</div>
+          {evalResult.transcript_context?.[0] && (
+            <div className="eval-transcript">
+              <span style={{ color: '#666' }}>ACTUAL LOG [{evalResult.transcript_context[0].met.toFixed(2)}h]: </span>
+              <span style={{ color: '#aaa' }}>"{evalResult.transcript_context[0].line}"</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* DECISION OVERLAY */}
       {pendingDecision && (
@@ -536,8 +607,7 @@ export default function App() {
 
       {/* CHAT PANEL */}
       {selectedChar && (
-        <div
-          className="chat-panel"
+        <div className="chat-panel"
           style={{
             border: `1px solid ${talkingChar === selectedChar.name ? '#ffff00' : (selectedChar.color || '#4af')}`,
             boxShadow: talkingChar === selectedChar.name ? '0 0 16px rgba(255,255,0,0.15)' : 'none',
@@ -549,19 +619,13 @@ export default function App() {
           <div className="chat-header">
             <div>
               <div className="chat-char-name-row">
-                <span style={{ color: selectedChar.color || '#4af' }} className="chat-char-name">
-                  {selectedChar.name}
-                </span>
-                {talkingChar === selectedChar.name && (
-                  <span className="speaking-badge">◉ SPEAKING</span>
-                )}
+                <span style={{ color: selectedChar.color || '#4af' }} className="chat-char-name">{selectedChar.name}</span>
+                {talkingChar === selectedChar.name && <span className="speaking-badge">◉ SPEAKING</span>}
               </div>
               <div className="chat-char-title">{selectedChar.title}</div>
             </div>
             <div className="chat-header-btns">
-              {talkingChar && (
-                <button className="btn-stop" onClick={stopSpeaking} title="Stop speaking">⏹</button>
-              )}
+              {talkingChar && <button className="btn-stop" onClick={stopSpeaking} title="Stop speaking">⏹</button>}
               <button className="btn-close" onClick={() => { stopSpeaking(); setSelectedChar(null) }}>✕</button>
             </div>
           </div>
@@ -569,26 +633,18 @@ export default function App() {
           <div className="chat-bio">{selectedChar.bio}</div>
 
           <div className="chat-history">
-            {history.length === 0 && (
-              <div className="chat-empty">— open comms —</div>
-            )}
+            {history.length === 0 && <div className="chat-empty">— open comms —</div>}
             {history.map((h, i) => (
               <div key={i} className={`chat-bubble-wrap ${h.role}`}>
-                {h.time !== undefined && (
-                  <div className="msg-time">{formatMissionTime(h.time)}</div>
-                )}
+                {h.time !== undefined && <div className="msg-time">{formatMissionTime(h.time)}</div>}
                 <div className={`chat-bubble ${h.role}`} style={{
                   background: h.role === 'user' ? '#0f2a4a' : '#0a1a0a',
                   border: `1px solid ${h.role === 'user' ? '#1a4a8a' : '#1a3a1a'}`,
                   color: h.role === 'user' ? '#7af' : '#9f9',
-                }}>
-                  {h.content}
-                </div>
+                }}>{h.content}</div>
               </div>
             ))}
-            {loading && (
-              <div className="chat-loading">{selectedChar.name} is transmitting...</div>
-            )}
+            {loading && <div className="chat-loading">{selectedChar.name} is transmitting...</div>}
             <div ref={chatEndRef} />
           </div>
 
@@ -602,291 +658,102 @@ export default function App() {
           )}
 
           <div className="chat-input-row">
-            <input
-              className="chat-input"
-              value={message}
+            <input className="chat-input" value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
               placeholder={listening ? 'Listening...' : 'Speak to mission control...'}
               style={{ border: `1px solid ${listening ? '#ff4400' : (selectedChar.color || '#1a3a6a')}` }}
             />
             {voiceSupported && (
-              <button
-                className="btn-mic"
+              <button className="btn-mic"
                 onPointerDown={e => { e.stopPropagation(); startListening() }}
-                onPointerUp={stopListening}
-                onPointerLeave={stopListening}
+                onPointerUp={stopListening} onPointerLeave={stopListening}
                 style={{
                   background: listening ? '#3a0000' : '#0a1a0a',
                   color: listening ? '#ff4400' : '#6a6',
                   border: `1px solid ${listening ? '#ff4400' : '#1a4a1a'}`,
                   animation: listening ? 'pulse 1s infinite' : 'none',
-                }}
-              >🎙</button>
+                }}>🎙</button>
             )}
-            <button
-              id="send-btn"
-              className="btn-send"
-              onClick={() => sendMessage()}
-              disabled={loading}
-              style={{ background: loading ? '#111' : '#0f3460', color: loading ? '#333' : '#fff' }}
-            >▶</button>
+            <button id="send-btn" className="btn-send" onClick={() => sendMessage()} disabled={loading}
+              style={{ background: loading ? '#111' : '#0f3460', color: loading ? '#333' : '#fff' }}>▶</button>
           </div>
         </div>
       )}
 
       {!selectedChar && introPhase === 'done' && (
-        <div className="bottom-hint">
-          CLICK A CHARACTER · DRAG TO ROTATE · SCROLL TO ZOOM
-        </div>
+        <div className="bottom-hint">CLICK A CHARACTER · DRAG TO ROTATE · SCROLL TO ZOOM</div>
       )}
 
       <style>{`
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        .app-root { position: fixed; inset: 0; overflow: hidden; font-family: monospace; }
 
-        .app-root {
-          position: fixed;
-          inset: 0;
-          overflow: hidden;
-          font-family: monospace;
-        }
-
-        /* ── INTRO ── */
-        .intro-overlay {
-          position: absolute;
-          inset: 0;
-          background: rgba(0,0,0,0.92);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 100;
-          cursor: pointer;
-        }
-        .intro-text {
-          color: #4af0c0;
-          font-family: monospace;
-          font-size: clamp(12px, 2.2vw, 18px);
-          line-height: 1.8;
-          white-space: pre;
-          text-shadow: 0 0 12px rgba(74,240,192,0.5);
-          text-align: left;
-          max-width: 90vw;
-        }
-        .intro-cursor {
-          animation: blink 0.7s step-end infinite;
-        }
+        .intro-overlay { position:absolute;inset:0;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;z-index:100;cursor:pointer; }
+        .intro-text { color:#4af0c0;font-family:monospace;font-size:clamp(12px,2.2vw,18px);line-height:1.8;white-space:pre;text-shadow:0 0 12px rgba(74,240,192,0.5);text-align:left;max-width:90vw; }
+        .intro-cursor { animation:blink 0.7s step-end infinite; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-        /* ── TOP BAR ── */
-        .topbar {
-          position: absolute;
-          top: 0; left: 0; right: 0;
-          padding: 8px 12px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-          background: rgba(0,0,0,0.8);
-          z-index: 30;
-        }
-        .topbar-title {
-          font-size: clamp(9px, 1.8vw, 13px);
-          letter-spacing: clamp(1px, 0.3vw, 2px);
-          white-space: nowrap;
-          flex: 1;
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .topbar-clock {
-          color: #4af;
-          font-size: clamp(9px, 1.6vw, 12px);
-          letter-spacing: 1px;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        .topbar-actions {
-          display: flex;
-          gap: 6px;
-          flex-shrink: 0;
-        }
-        .export-btn {
-          color: #4af;
-          background: transparent;
-          border: 1px solid #1a3a6a;
-          border-radius: 4px;
-          padding: 4px clamp(6px, 1vw, 10px);
-          font-family: monospace;
-          font-size: clamp(9px, 1.4vw, 11px);
-          cursor: pointer;
-          white-space: nowrap;
-        }
-        .crisis-btn {
-          color: #fff;
-          border: none;
-          border-radius: 4px;
-          padding: 5px clamp(8px, 1.5vw, 14px);
-          font-family: monospace;
-          font-size: clamp(9px, 1.5vw, 11px);
-          letter-spacing: 1px;
-          cursor: pointer;
-          white-space: nowrap;
-        }
+        .topbar { position:absolute;top:0;left:0;right:0;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(0,0,0,0.8);z-index:30; }
+        .topbar-title { font-size:clamp(9px,1.8vw,13px);letter-spacing:clamp(1px,0.3vw,2px);white-space:nowrap;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis; }
+        .topbar-clock { color:#4af;font-size:clamp(9px,1.6vw,12px);letter-spacing:1px;white-space:nowrap;flex-shrink:0; }
+        .topbar-actions { display:flex;gap:6px;align-items:center;flex-shrink:0; }
+        .timeline-badge { font-size:clamp(8px,1.3vw,10px);letter-spacing:1px;white-space:nowrap; }
+        .export-btn { color:#4af;background:transparent;border:1px solid #1a3a6a;border-radius:4px;padding:4px clamp(6px,1vw,10px);font-family:monospace;font-size:clamp(9px,1.4vw,11px);cursor:pointer;white-space:nowrap; }
+        .crisis-btn { color:#fff;border:none;border-radius:4px;padding:5px clamp(8px,1.5vw,14px);font-family:monospace;font-size:clamp(9px,1.5vw,11px);letter-spacing:1px;cursor:pointer;white-space:nowrap; }
 
-        /* ── BROADCAST ── */
-        .broadcast {
-          position: absolute;
-          top: 48px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: clamp(280px, 70vw, 560px);
-          background: rgba(5,5,20,0.95);
-          border-radius: 6px;
-          padding: 10px 14px;
-          display: flex;
-          gap: 10px;
-          align-items: flex-start;
-          z-index: 25;
-          animation: slideDown 0.3s ease;
-        }
+        .broadcast { position:absolute;top:48px;left:50%;transform:translateX(-50%);width:clamp(280px,70vw,560px);background:rgba(5,5,20,0.95);border-radius:6px;padding:10px 14px;display:flex;gap:10px;align-items:flex-start;z-index:25;animation:slideDown 0.3s ease; }
         @keyframes slideDown { from{opacity:0;transform:translateX(-50%) translateY(-8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
-        .broadcast-who {
-          font-size: 11px;
-          font-weight: bold;
-          white-space: nowrap;
-          flex-shrink: 0;
-          letter-spacing: 1px;
-        }
-        .broadcast-text {
-          color: #ccc;
-          font-size: clamp(10px, 1.6vw, 12px);
-          line-height: 1.5;
-        }
+        .broadcast-who { font-size:11px;font-weight:bold;white-space:nowrap;flex-shrink:0;letter-spacing:1px; }
+        .broadcast-text { color:#ccc;font-size:clamp(10px,1.6vw,12px);line-height:1.5; }
 
-        /* ── SYSTEMS HUD ── */
-        .hud {
-          position: absolute;
-          top: calc(44px + 8px);
-          right: 12px;
-          font-size: clamp(9px, 1.5vw, 11px);
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          background: rgba(0,0,0,0.7);
-          border-radius: 6px;
-          padding: 8px 10px;
-          width: clamp(130px, 20vw, 160px);
-          z-index: 10;
-        }
-        .hud-label { color: #444; letter-spacing: 1px; font-size: 10px; }
-        .hud-row { display: flex; flex-direction: column; gap: 3px; }
-        .hud-row-header { display: flex; justify-content: space-between; }
-        .hud-bar-bg { background: #111; border-radius: 2px; height: 4px; overflow: hidden; }
-        .hud-bar-fill { height: 100%; transition: width 0.5s, background 0.5s; }
-        .hud-crew { color: #333; font-size: 10px; margin-top: 2px; }
+        .hud { position:absolute;top:calc(44px + 8px);right:12px;font-size:clamp(9px,1.5vw,11px);display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,0.7);border-radius:6px;padding:8px 10px;width:clamp(130px,20vw,160px);z-index:10; }
+        .hud-label { color:#444;letter-spacing:1px;font-size:10px; }
+        .hud-row { display:flex;flex-direction:column;gap:3px; }
+        .hud-row-header { display:flex;justify-content:space-between; }
+        .hud-bar-bg { background:#111;border-radius:2px;height:4px;overflow:hidden; }
+        .hud-bar-fill { height:100%;transition:width 0.5s,background 0.5s; }
+        .hud-crew { color:#333;font-size:10px;margin-top:2px; }
 
-        /* ── TELEMETRY ── */
-        .telemetry {
-          position: absolute;
-          bottom: 12px;
-          right: 12px;
-          font-size: clamp(9px, 1.4vw, 11px);
-          display: flex;
-          flex-direction: column;
-          gap: 5px;
-          background: rgba(0,0,0,0.7);
-          border-radius: 6px;
-          padding: 8px 10px;
-          width: clamp(130px, 20vw, 160px);
-          z-index: 10;
-        }
-        .telem-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .telem-label { color: #444; letter-spacing: 1px; }
-        .telem-val { color: #4af0c0; text-align: right; }
-        .telem-unit { color: #333; font-size: 9px; }
+        .telemetry { position:absolute;bottom:12px;right:12px;font-size:clamp(9px,1.4vw,11px);display:flex;flex-direction:column;gap:5px;background:rgba(0,0,0,0.7);border-radius:6px;padding:8px 10px;width:clamp(130px,20vw,160px);z-index:10; }
+        .telem-row { display:flex;justify-content:space-between;align-items:center; }
+        .telem-label { color:#444;letter-spacing:1px; }
+        .telem-val { color:#4af0c0;text-align:right; }
+        .telem-unit { color:#333;font-size:9px; }
 
-        /* ── DECISION OVERLAY ── */
-        .decision-overlay {
-          position: absolute;
-          inset: 0;
-          background: rgba(0,0,0,0.75);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 60;
-        }
-        .decision-box {
-          background: rgba(8,4,16,0.99);
-          border: 1px solid #ff8800;
-          border-radius: 10px;
-          padding: 28px 24px;
-          max-width: clamp(280px, 88vw, 420px);
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          align-items: center;
-          animation: popIn 0.25s ease;
-        }
+        /* Physics evaluation panel */
+        .eval-panel { position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:clamp(280px,70vw,520px);background:rgba(4,8,18,0.98);border:1px solid #4af0c0;border-radius:8px;padding:12px 14px;z-index:25;display:flex;flex-direction:column;gap:6px;animation:slideDown 0.3s ease; }
+        .eval-header { display:flex;justify-content:space-between;align-items:center; }
+        .eval-label { color:#666;font-size:10px;letter-spacing:1px; }
+        .eval-timeline { font-size:clamp(10px,1.8vw,13px);font-weight:bold;letter-spacing:1px; }
+        .eval-outcome { color:#ccc;font-size:clamp(10px,1.6vw,12px);line-height:1.5; }
+        .eval-physics { color:#446;font-size:10px;line-height:1.4;border-top:1px solid #111;padding-top:6px; }
+        .eval-transcript { color:#555;font-size:10px;line-height:1.4;border-top:1px solid #111;padding-top:4px;font-style:italic; }
+
+        .decision-overlay { position:absolute;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:60; }
+        .decision-box { background:rgba(8,4,16,0.99);border:1px solid #ff8800;border-radius:10px;padding:28px 24px;max-width:clamp(280px,88vw,420px);width:100%;display:flex;flex-direction:column;gap:16px;align-items:center;animation:popIn 0.25s ease; }
         @keyframes popIn { from{opacity:0;transform:scale(0.9)} to{opacity:1;transform:scale(1)} }
-        .decision-icon { font-size: 28px; }
-        .decision-q {
-          color: #ccc;
-          font-family: monospace;
-          font-size: clamp(11px, 2vw, 14px);
-          text-align: center;
-          line-height: 1.6;
-        }
-        .decision-opts { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-        .decision-btn {
-          background: rgba(10,10,30,0.9);
-          color: #fff;
-          border: 1px solid #ff8800;
-          border-radius: 6px;
-          padding: 10px 16px;
-          font-family: monospace;
-          font-size: clamp(11px, 1.8vw, 13px);
-          cursor: pointer;
-          letter-spacing: 1px;
-          transition: background 0.2s;
-        }
-        .decision-btn:hover { background: rgba(40,20,5,0.9); }
+        .decision-icon { font-size:28px; }
+        .decision-q { color:#ccc;font-family:monospace;font-size:clamp(11px,2vw,14px);text-align:center;line-height:1.6; }
+        .decision-opts { display:flex;flex-direction:column;gap:10px;width:100%; }
+        .decision-btn { background:rgba(10,10,30,0.9);color:#fff;border:1px solid #ff8800;border-radius:6px;padding:10px 16px;font-family:monospace;font-size:clamp(11px,1.8vw,13px);cursor:pointer;letter-spacing:1px;transition:background 0.2s; }
+        .decision-btn:hover { background:rgba(40,20,5,0.9); }
 
-        /* ── CHAT PANEL ── */
-        .chat-panel {
-          position: absolute;
-          bottom: 12px;
-          left: 12px;
-          width: clamp(260px, 88vw, 340px);
-          max-height: calc(100vh - 68px);
-          background: rgba(5,5,20,0.97);
-          border-radius: 8px;
-          padding: 12px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          transition: border-color 0.3s, box-shadow 0.3s;
-          z-index: 20;
-          touch-action: pan-y;
-        }
-        .chat-header { display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; }
-        .chat-char-name-row { display: flex; align-items: center; gap: 8px; }
-        .chat-char-name { font-size: clamp(12px, 2vw, 15px); font-weight: bold; }
-        .speaking-badge { color: #ffff00; font-size: 10px; animation: pulse 0.6s infinite; }
-        .chat-char-title { color: #666; font-size: clamp(9px, 1.5vw, 11px); margin-top: 2px; }
-        .chat-header-btns { display: flex; gap: 5px; flex-shrink: 0; }
+        .chat-panel { position:absolute;bottom:12px;left:12px;width:clamp(260px,88vw,340px);max-height:calc(100vh - 68px);background:rgba(5,5,20,0.97);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;transition:border-color 0.3s,box-shadow 0.3s;z-index:20;touch-action:pan-y; }
+        .chat-header { display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0; }
+        .chat-char-name-row { display:flex;align-items:center;gap:8px; }
+        .chat-char-name { font-size:clamp(12px,2vw,15px);font-weight:bold; }
+        .speaking-badge { color:#ffff00;font-size:10px;animation:pulse 0.6s infinite; }
+        .chat-char-title { color:#666;font-size:clamp(9px,1.5vw,11px);margin-top:2px; }
+        .chat-header-btns { display:flex;gap:5px;flex-shrink:0; }
         .btn-stop { background:#1a0a00;color:#ff8800;border:1px solid #ff8800;border-radius:4px;padding:2px 7px;font-family:monospace;font-size:10px;cursor:pointer; }
         .btn-close { background:transparent;color:#444;border:1px solid #222;border-radius:4px;padding:2px 7px;font-family:monospace;font-size:11px;cursor:pointer; }
         .chat-bio { color:#555;font-size:clamp(10px,1.5vw,11px);line-height:1.5;border-bottom:1px solid #111;padding-bottom:8px;flex-shrink:0; }
         .chat-history { flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:48px;max-height:32vh; }
         .chat-empty { color:#333;font-size:11px;text-align:center;margin-top:8px; }
         .chat-bubble-wrap { display:flex;flex-direction:column;gap:2px; }
-        .chat-bubble-wrap.user { align-items: flex-end; }
-        .chat-bubble-wrap.assistant { align-items: flex-start; }
+        .chat-bubble-wrap.user { align-items:flex-end; }
+        .chat-bubble-wrap.assistant { align-items:flex-start; }
         .msg-time { color:#333;font-size:9px;letter-spacing:0.5px; }
         .chat-bubble { border-radius:6px;padding:6px 9px;font-size:clamp(11px,1.8vw,12px);line-height:1.5;max-width:85%;word-break:break-word; }
         .chat-loading { color:#444;font-size:11px;align-self:flex-start;animation:pulse 1s infinite; }
@@ -899,22 +766,8 @@ export default function App() {
         .btn-send { border:none;border-radius:4px;padding:7px 11px;font-family:monospace;font-size:12px;cursor:pointer;flex-shrink:0; }
         .btn-send:disabled { cursor:default; }
 
-        /* ── BOTTOM HINT ── */
-        .bottom-hint {
-          position: absolute;
-          bottom: 10px;
-          left: 50%;
-          transform: translateX(-50%);
-          color: #1e1e2e;
-          font-family: monospace;
-          font-size: clamp(8px, 1.4vw, 11px);
-          letter-spacing: 1px;
-          pointer-events: none;
-          white-space: nowrap;
-          z-index: 5;
-        }
+        .bottom-hint { position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:#1e1e2e;font-family:monospace;font-size:clamp(8px,1.4vw,11px);letter-spacing:1px;pointer-events:none;white-space:nowrap;z-index:5; }
 
-        /* ── RESPONSIVE ── */
         @media (max-width: 480px) {
           .chat-panel { left:8px;right:8px;width:auto;bottom:8px; }
           .hud { display:none; }
@@ -922,6 +775,8 @@ export default function App() {
           .topbar-title { display:none; }
           .bottom-hint { display:none; }
           .broadcast { width:96vw; }
+          .eval-panel { width:96vw;left:2vw;transform:none; }
+          .timeline-badge { display:none; }
         }
         @media (max-width: 768px) and (min-width: 481px) {
           .chat-panel { width:clamp(260px,50vw,340px); }
