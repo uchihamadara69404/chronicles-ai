@@ -110,6 +110,8 @@ export default function App() {
   const [o2,              setO2]              = useState(100)
   const [power,           setPower]           = useState(100)
   const [missionTime,     setMissionTime]     = useState(0)
+  const [clockSpeed,      setClockSpeed]      = useState(1)
+  const clockSpeedRef = useRef(1)
   const [introPhase,      setIntroPhase]      = useState('typing')
   const [introText,       setIntroText]       = useState('')
   const [broadcast,       setBroadcast]       = useState(null)
@@ -158,17 +160,18 @@ export default function App() {
   // ── Main timer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const timer = setInterval(() => {
-      setMissionTime(t => t + 1)
+      const spd = clockSpeedRef.current
+      setMissionTime(t => t + spd)
       if (alertRef.current) {
-        setO2(v => Math.max(0, v - 0.08))
-        setPower(v => Math.max(0, v - 0.12))
+        setO2(v => Math.max(0, v - 0.08 * spd))
+        setPower(v => Math.max(0, v - 0.12 * spd))
       }
       setTelemetry(t => ({
-        alt:  Math.max(0, t.alt - (Math.random() * 0.8 + 0.2)),
-        vel:  alertRef.current ? Math.min(t.vel + Math.random() * 0.002, 2.1) : t.vel + (Math.random() - 0.6) * 0.001,
-        co2:  alertRef.current ? Math.min(t.co2 + 0.018, 15.0) : Math.max(t.co2 - 0.001, 2.4),
-        temp: alertRef.current ? Math.max(t.temp - 0.04, 4.0) : Math.min(t.temp + 0.01, 21.5),
-        batt: alertRef.current ? Math.max(t.batt - 0.025, 0) : Math.min(t.batt + 0.001, 29.5),
+        alt:  Math.max(0, t.alt - (Math.random() * 0.8 + 0.2) * spd),
+        vel:  alertRef.current ? Math.min(t.vel + Math.random() * 0.002 * spd, 2.1) : t.vel + (Math.random() - 0.6) * 0.001,
+        co2:  alertRef.current ? Math.min(t.co2 + 0.018 * spd, 15.0) : Math.max(t.co2 - 0.001, 2.4),
+        temp: alertRef.current ? Math.max(t.temp - 0.04 * spd, 4.0) : Math.min(t.temp + 0.01, 21.5),
+        batt: alertRef.current ? Math.max(t.batt - 0.025 * spd, 0) : Math.min(t.batt + 0.001, 29.5),
       }))
     }, 1000)
     return () => clearInterval(timer)
@@ -200,6 +203,12 @@ export default function App() {
       }
     })
   }, [missionTime, isAlert])
+
+  // ── Clock speed ────────────────────────────────────────────────────────────
+  const changeClockSpeed = useCallback((spd) => {
+    clockSpeedRef.current = spd
+    setClockSpeed(spd)
+  }, [])
 
   // ── Character movement ─────────────────────────────────────────────────────
   const moveCharacter = useCallback((charKey, crisis = false) => {
@@ -505,6 +514,19 @@ export default function App() {
         </span>
         <span className="topbar-clock">{formatMissionTime(missionTime)}</span>
         <div className="topbar-actions">
+          <div className="speed-controls">
+            {[1, 5, 30, 60].map(spd => (
+              <button key={spd} className="speed-btn"
+                onClick={e => { e.stopPropagation(); changeClockSpeed(spd) }}
+                style={{
+                  background: clockSpeed === spd ? '#1a3a6a' : 'transparent',
+                  color: clockSpeed === spd ? '#4af' : '#444',
+                  borderColor: clockSpeed === spd ? '#4af' : '#222',
+                }}>
+                {spd}×
+              </button>
+            ))}
+          </div>
           <span className="timeline-badge" style={{ color: BRANCH_COLORS[timelineBranch] }}>
             {BRANCH_LABELS[timelineBranch]}
           </span>
@@ -698,6 +720,9 @@ export default function App() {
         .topbar-title { font-size:clamp(9px,1.8vw,13px);letter-spacing:clamp(1px,0.3vw,2px);white-space:nowrap;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis; }
         .topbar-clock { color:#4af;font-size:clamp(9px,1.6vw,12px);letter-spacing:1px;white-space:nowrap;flex-shrink:0; }
         .topbar-actions { display:flex;gap:6px;align-items:center;flex-shrink:0; }
+        .speed-controls { display:flex;gap:3px;align-items:center; }
+        .speed-btn { background:transparent;border:1px solid #222;border-radius:3px;padding:3px 6px;font-family:monospace;font-size:clamp(9px,1.4vw,11px);cursor:pointer;transition:all 0.15s;white-space:nowrap; }
+        .speed-btn:hover { border-color:#4af;color:#4af; }
         .timeline-badge { font-size:clamp(8px,1.3vw,10px);letter-spacing:1px;white-space:nowrap; }
         .export-btn { color:#4af;background:transparent;border:1px solid #1a3a6a;border-radius:4px;padding:4px clamp(6px,1vw,10px);font-family:monospace;font-size:clamp(9px,1.4vw,11px);cursor:pointer;white-space:nowrap; }
         .crisis-btn { color:#fff;border:none;border-radius:4px;padding:5px clamp(8px,1.5vw,14px);font-family:monospace;font-size:clamp(9px,1.5vw,11px);letter-spacing:1px;cursor:pointer;white-space:nowrap; }
