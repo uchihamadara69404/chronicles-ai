@@ -1,7 +1,21 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import World from './world/World'
+
+function CameraFollower({ playerPos, orbitRef }) {
+  const smoothPos = useRef({ x: playerPos[0], z: playerPos[2] })
+  useFrame(() => {
+    const [px, , pz] = playerPos
+    smoothPos.current.x += (px - smoothPos.current.x) * 0.08
+    smoothPos.current.z += (pz - smoothPos.current.z) * 0.08
+    if (orbitRef.current) {
+      orbitRef.current.target.set(smoothPos.current.x, 0, smoothPos.current.z)
+      orbitRef.current.update()
+    }
+  })
+  return null
+}
 
 const API = '/api'
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
@@ -297,12 +311,6 @@ export default function App() {
     playerPosRef.current = newPos
     setPlayerPos(newPos)
     setIsPlayerMoving(true)
-
-    // Update orbit camera target to follow player
-    if (orbitRef.current) {
-      orbitRef.current.target.set(nx, 0, nz)
-      orbitRef.current.update()
-    }
 
     clearTimeout(movingTimerRef.current)
     movingTimerRef.current = setTimeout(() => setIsPlayerMoving(false), 250)
@@ -657,6 +665,7 @@ export default function App() {
           minDistance={8}
           maxDistance={25}
         />
+        <CameraFollower playerPos={playerPos} orbitRef={orbitRef} />
       </Canvas>
 
       {/* INTRO */}

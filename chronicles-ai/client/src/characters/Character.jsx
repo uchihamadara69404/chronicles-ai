@@ -11,7 +11,8 @@ const ROLES = {
   'ENG-5':  { title: 'SURGEON — Flight Surgeon', color: '#4a8ff0', bio: 'Monitors crew health and vital signs.' },
 }
 
-const LERP_SPEED = 0.04  // smooth walk feel — adjust 0.02 (slow) to 0.08 (brisk)
+const LERP_SPEED = 0.06
+const ROT_LERP   = 0.12
 
 export default function Character({
   position,       // [x, y, z] — static home/crisis target from World
@@ -26,6 +27,7 @@ export default function Character({
   const headRef     = useRef()
   const groupRef    = useRef()
   const glowRingRef = useRef()
+  const targetRotY  = useRef(0)
 
   // Current interpolated position (starts at target)
   const currentPos = useRef([...position])
@@ -39,9 +41,20 @@ export default function Character({
       const [cx, cy, cz] = currentPos.current
       const [tx, , tz]   = position
 
-      const nx = cx + (tx - cx) * LERP_SPEED
-      const nz = cz + (tz - cz) * LERP_SPEED
+      const dx = tx - cx
+      const dz = tz - cz
+      const nx = cx + dx * LERP_SPEED
+      const nz = cz + dz * LERP_SPEED
       currentPos.current = [nx, cy, nz]
+
+      // Face movement direction
+      if (Math.abs(dx) + Math.abs(dz) > 0.01) {
+        targetRotY.current = Math.atan2(dx, dz)
+      }
+      let rotDiff = targetRotY.current - groupRef.current.rotation.y
+      while (rotDiff >  Math.PI) rotDiff -= 2 * Math.PI
+      while (rotDiff < -Math.PI) rotDiff += 2 * Math.PI
+      groupRef.current.rotation.y += rotDiff * ROT_LERP
 
       // Alert micro-jitter overlaid on top of smooth position
       const jx = isAlert ? Math.sin(t * 18 + seed) * 0.03 : 0
