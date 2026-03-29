@@ -81,25 +81,27 @@ const API = '/api'
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
 
 // ── Tile map (mirrored from World.jsx for collision detection) ──────────────
+// FIX: Opened up the console rows so player can walk through them more freely.
+// Only the actual desk-blocking tiles remain solid (1); aisle tiles are 0.
 const COLLISION_MAP = [
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 0  z=-9 outer wall
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 1  z=-8 screen wall
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 2  z=-7 screen wall
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 3  z=-6 glow floor
-  [2,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,2], // row 4  z=-5 front consoles
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 5  z=-4 ENG-4/5 HERE
-  [2,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,2], // row 6  z=-3 back consoles
-  [2,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,2], // row 7  z=-2 back consoles
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 8  z=-1 ENG-1/2/3 HERE
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 9  z=0  corridor
-  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 10 z=1  step
-  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 11 z=2  platform
-  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 12 z=3  KRANZ HERE
-  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 13 z=4  step down
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 14 z=5  corridor
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 15 z=6  player start
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 16 z=7  entrance
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 17 z=8  outer wall
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 0
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 1
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 2
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 3  z=-6
+  [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 4  z=-5 front consoles (narrower blocks)
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 5  z=-4 open aisle
+  [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 6  z=-3 back consoles
+  [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 7  z=-2 back consoles
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 8  z=-1 open aisle
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 9  z=0
+  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 10 z=1
+  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 11 z=2
+  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 12 z=3
+  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 13 z=4
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 14 z=5
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 15 z=6
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 16 z=7
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 17
 ]
 
 const isWalkable = (wx, wz) => {
@@ -377,9 +379,8 @@ export default function App() {
   }, [])
 
   // ── Core move function — yaw-relative ──────────────────────────────────────
-  // dir[0]: A=-1, D=+1  (strafe)
-  // dir[1]: W=-1, S=+1  (forward/back)
-  // Both axes negated so W=forward, A=left relative to camera facing direction.
+  // FIX: Removed NPC collision blocking — NPCs stand on their tile but the
+  // player is not hard-blocked by them. The map tiles handle real walls.
   const movePlayer = useCallback((dir) => {
     const [px, , pz] = playerPosRef.current
     const yaw = cameraYawRef.current
@@ -389,7 +390,6 @@ export default function App() {
     const rgtX =  Math.cos(yaw)
     const rgtZ = -Math.sin(yaw)
 
-    // Negate both dir[0] and dir[1] to correct axis orientation
     const moveX = -dir[0] * rgtX - dir[1] * fwdX
     const moveZ = -dir[0] * rgtZ - dir[1] * fwdZ
 
@@ -398,10 +398,8 @@ export default function App() {
 
     if (!isWalkable(nx, nz)) return
 
-    const blocked = Object.values(charPositionsRef.current).some(([cx, , cz]) =>
-      Math.abs(cx - nx) < 0.6 && Math.abs(cz - nz) < 0.6
-    )
-    if (blocked) return
+    // NPC collision removed — player can walk near/through NPCs freely.
+    // NPCs are visual only; the tile map handles real obstacle avoidance.
 
     const newPos = [nx, 0, nz]
     playerPosRef.current = newPos
@@ -945,7 +943,7 @@ export default function App() {
         </div>
       )}
 
-      {/* D-PAD — for iPad */}
+      {/* D-PAD */}
       {introPhase === 'done' && (
         <div className="dpad" onClick={e => e.stopPropagation()}>
           <button className="dpad-btn dpad-up"
@@ -1049,7 +1047,6 @@ export default function App() {
         .btn-send { border:none;border-radius:4px;padding:7px 11px;font-family:monospace;font-size:12px;cursor:pointer;flex-shrink:0; }
         .btn-send:disabled { cursor:default; }
 
-        /* D-PAD */
         .dpad {
           position: absolute;
           bottom: 24px;

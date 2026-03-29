@@ -11,11 +11,12 @@ const ROLES = {
   'ENG-5':  { title: 'SURGEON — Flight Surgeon', color: '#4a8ff0', bio: 'Monitors crew health and vital signs.' },
 }
 
-const LERP_SPEED = 0.06
-const ROT_LERP   = 0.12
+// Increased lerp speed so NPCs glide smoothly instead of snapping frame-to-frame
+const LERP_SPEED = 0.10
+const ROT_LERP   = 0.14
 
 export default function Character({
-  position,       // [x, y, z] — static home/crisis target from World
+  position,
   color,
   name,
   onSelect,
@@ -29,11 +30,20 @@ export default function Character({
   const glowRingRef = useRef()
   const targetRotY  = useRef(0)
 
-  // Current interpolated position (starts at target)
-  const currentPos = useRef([...position])
+  // currentPos persists the interpolated world position across frames.
+  // We initialise lazily using a function so it only reads position[0/2] once.
+  const currentPos = useRef(null)
 
-  // Set initial 3D position once — useFrame owns it after this
+  // Keep a ref to the latest target position so useFrame always has current value
+  const targetPos = useRef(position)
+  targetPos.current = position
+
+  // Seed for per-character idle animation variation
+  const seed = useRef(position[0] * 3.7 + position[2] * 1.3)
+
   useLayoutEffect(() => {
+    // Initialise currentPos and the group's 3-D position on first mount
+    currentPos.current = [position[0], 0, position[2]]
     if (groupRef.current) {
       groupRef.current.position.set(position[0], 0, position[2])
     }
@@ -41,54 +51,51 @@ export default function Character({
   }, [])
 
   useFrame((state) => {
+    if (!groupRef.current || !currentPos.current) return
     const t    = state.clock.getElapsedTime()
-    const seed = position[0] * 3.7 + position[2] * 1.3
+    const s    = seed.current
+    const [tx, , tz] = targetPos.current
 
-    // ── Smooth movement (lerp toward target) ──────────────────────────
-    if (groupRef.current) {
-      const [cx, cy, cz] = currentPos.current
-      const [tx, , tz]   = position
+    // ── Smooth glide toward target ─────────────────────────────────────
+    const [cx, cy, cz] = currentPos.current
+    const dx = tx - cx
+    const dz = tz - cz
+    const nx = cx + dx * LERP_SPEED
+    const nz = cz + dz * LERP_SPEED
+    currentPos.current = [nx, cy, nz]
 
-      const dx = tx - cx
-      const dz = tz - cz
-      const nx = cx + dx * LERP_SPEED
-      const nz = cz + dz * LERP_SPEED
-      currentPos.current = [nx, cy, nz]
-
-      // Face movement direction
-      if (Math.abs(dx) + Math.abs(dz) > 0.01) {
-        targetRotY.current = Math.atan2(dx, dz)
-      }
-      let rotDiff = targetRotY.current - groupRef.current.rotation.y
-      while (rotDiff >  Math.PI) rotDiff -= 2 * Math.PI
-      while (rotDiff < -Math.PI) rotDiff += 2 * Math.PI
-      groupRef.current.rotation.y += rotDiff * ROT_LERP
-
-      // Alert micro-jitter overlaid on top of smooth position
-      const jx = isAlert ? Math.sin(t * 18 + seed) * 0.03 : 0
-      const jz = isAlert ? Math.cos(t * 16 + seed) * 0.03 : 0
-
-      groupRef.current.position.x = nx + jx
-      groupRef.current.position.z = nz + jz
+    // Face the direction of travel
+    if (Math.abs(dx) + Math.abs(dz) > 0.005) {
+      targetRotY.current = Math.atan2(dx, dz)
     }
+    let rotDiff = targetRotY.current - groupRef.current.rotation.y
+    while (rotDiff >  Math.PI) rotDiff -= 2 * Math.PI
+    while (rotDiff < -Math.PI) rotDiff += 2 * Math.PI
+    groupRef.current.rotation.y += rotDiff * ROT_LERP
+
+    // Alert micro-jitter (small, overlaid on smooth position)
+    const jx = isAlert ? Math.sin(t * 18 + s) * 0.02 : 0
+    const jz = isAlert ? Math.cos(t * 16 + s) * 0.02 : 0
+
+    groupRef.current.position.x = nx + jx
+    groupRef.current.position.z = nz + jz
 
     // ── Body bob ──────────────────────────────────────────────────────
     if (bodyRef.current) {
-      const speed = isTalking ? 6 : 2
-      const amp   = isTalking ? 0.08 : 0.04
-      // Extra bob when moving (distance to target > threshold)
-      const dist  = Math.abs(position[0] - currentPos.current[0]) + Math.abs(position[2] - currentPos.current[2])
-      const walkAmp = dist > 0.1 ? 0.06 : 0
-      bodyRef.current.position.y = 0.6 + Math.sin(t * speed + seed) * (amp + walkAmp)
+      const speed    = isTalking ? 6 : 2
+      const amp      = isTalking ? 0.08 : 0.04
+      const dist     = Math.abs(dx) + Math.abs(dz)
+      const walkAmp  = dist > 0.05 ? 0.05 : 0
+      bodyRef.current.position.y = 0.6 + Math.sin(t * speed + s) * (amp + walkAmp)
     }
 
     // ── Head look ────────────────────────────────────────────────────
     if (headRef.current) {
       if (isTalking) {
-        headRef.current.rotation.y = Math.sin(t * 4 + seed) * 0.25
-        headRef.current.rotation.x = Math.sin(t * 5 + seed) * 0.1
+        headRef.current.rotation.y = Math.sin(t * 4 + s) * 0.25
+        headRef.current.rotation.x = Math.sin(t * 5 + s) * 0.1
       } else {
-        headRef.current.rotation.y = Math.sin(t * 0.7 + seed) * 0.4
+        headRef.current.rotation.y = Math.sin(t * 0.7 + s) * 0.4
         headRef.current.rotation.x = 0
       }
     }
