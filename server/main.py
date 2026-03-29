@@ -18,7 +18,12 @@ from physics import (
 )
 
 app = FastAPI()
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+def get_groq_client():
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY environment variable is not set.")
+    return Groq(api_key=api_key)
 
 app.add_middleware(
     CORSMiddleware,
@@ -158,7 +163,7 @@ async def transcribe(audio: UploadFile = File(...)):
         tmp.write(await audio.read())
         tmp_path = tmp.name
     with open(tmp_path, "rb") as f:
-        transcription = client.audio.transcriptions.create(
+        transcription = get_groq_client().audio.transcriptions.create(
             model="whisper-large-v3",
             file=("audio.webm", f, "audio/webm"),
         )
@@ -211,7 +216,7 @@ RULES:
         messages.append({"role": h["role"], "content": h["content"]})
     messages.append({"role": "user", "content": req.message})
 
-    response = client.chat.completions.create(
+    response = get_groq_client().chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "system", "content": system_prompt}] + messages,
         max_tokens=180,
