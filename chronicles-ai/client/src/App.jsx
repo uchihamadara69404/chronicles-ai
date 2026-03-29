@@ -80,16 +80,18 @@ function FirstPersonCamera({ playerPos, yawRef }) {
 const API = '/api'
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
 
-// ── Tile map (mirrored from World.jsx for collision detection) ──────────────
+// ── Tile map — 1 = solid object, 2 = outer wall, 0/4 = walkable ─────────────
+// Uses Math.floor for lookup so there is NO rounding-based ghost buffer.
+// Each '1' tile covers exactly the footprint of a desk/console geometry.
 const COLLISION_MAP = [
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 0
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 1
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 2
   [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 3  z=-6
-  [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 4  z=-5 front consoles
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 4  z=-5 front consoles (1 tile each, gap between)
   [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 5  z=-4 open aisle
-  [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 6  z=-3 back consoles
-  [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 7  z=-2 back consoles
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 6  z=-3 back consoles
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 7  z=-2 back consoles
   [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 8  z=-1 open aisle
   [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 9  z=0
   [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 10 z=1
@@ -102,9 +104,10 @@ const COLLISION_MAP = [
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 17
 ]
 
+// ── NO Math.round — use Math.floor so tile lookup is exact with no ghost buffer
 const isWalkable = (wx, wz) => {
-  const tx = Math.round(wx + 12)
-  const tz = Math.round(wz + 9)
+  const tx = Math.floor(wx + 12.5)
+  const tz = Math.floor(wz + 9.5)
   if (tx < 0 || tx >= 25 || tz < 0 || tz >= 18) return false
   const t = COLLISION_MAP[tz][tx]
   return t === 0 || t === 4
@@ -221,6 +224,9 @@ const INTRO_FULL = INTRO_LINES.join('\n')
 
 const PLAYER_START = [0, 0, 5]
 const PROXIMITY_DISTANCE = 1.9
+// Movement step — 0.5 units gives sub-tile precision so gaps between objects
+// are navigable without snapping over them
+const MOVE_STEP = 0.5
 
 export default function App() {
   const [selectedChar,    setSelectedChar]    = useState(null)
@@ -245,7 +251,6 @@ export default function App() {
   const [charPositions,   setCharPositions]   = useState({ ...HOME_POSITIONS })
   const [evalResult,      setEvalResult]      = useState(null)
   const [timelineBranch,  setTimelineBranch]  = useState('A')
-  // last broadcast for big screen
   const [lastBroadcast,   setLastBroadcast]   = useState(null)
 
   // ── Player movement state ──────────────────────────────────────────────────
@@ -358,7 +363,7 @@ export default function App() {
       if (!dir) return
       clearInterval(kbIntervalRef.current)
       movePlayer(dir)
-      kbIntervalRef.current = setInterval(() => movePlayer(dir), 170)
+      kbIntervalRef.current = setInterval(() => movePlayer(dir), 140)
     }
 
     const onKeyUp = (e) => {
@@ -378,7 +383,7 @@ export default function App() {
     }
   }, [])
 
-  // ── Core move function — yaw-relative ──────────────────────────────────────
+  // ── Core move function — yaw-relative, sub-tile steps ─────────────────────
   const movePlayer = useCallback((dir) => {
     const [px, , pz] = playerPosRef.current
     const yaw = cameraYawRef.current
@@ -388,23 +393,37 @@ export default function App() {
     const rgtX =  Math.cos(yaw)
     const rgtZ = -Math.sin(yaw)
 
-    const moveX = -dir[0] * rgtX - dir[1] * fwdX
-    const moveZ = -dir[0] * rgtZ - dir[1] * fwdZ
+    // Raw direction vector scaled to MOVE_STEP
+    const rawX = (-dir[0] * rgtX - dir[1] * fwdX)
+    const rawZ = (-dir[0] * rgtZ - dir[1] * fwdZ)
 
-    const nx = px + Math.round(moveX)
-    const nz = pz + Math.round(moveZ)
+    // Normalise and scale so diagonal isn't faster
+    const len = Math.sqrt(rawX * rawX + rawZ * rawZ) || 1
+    const nx = px + (rawX / len) * MOVE_STEP
+    const nz = pz + (rawZ / len) * MOVE_STEP
 
-    if (!isWalkable(nx, nz)) return
+    // Try full move; if blocked, try axis-sliding
+    if (isWalkable(nx, nz)) {
+      const newPos = [nx, 0, nz]
+      playerPosRef.current = newPos
+      setPlayerPos(newPos)
+    } else if (isWalkable(nx, pz)) {
+      const newPos = [nx, 0, pz]
+      playerPosRef.current = newPos
+      setPlayerPos(newPos)
+    } else if (isWalkable(px, nz)) {
+      const newPos = [px, 0, nz]
+      playerPosRef.current = newPos
+      setPlayerPos(newPos)
+    } else {
+      return // fully blocked
+    }
 
-    const newPos = [nx, 0, nz]
-    playerPosRef.current = newPos
-    setPlayerPos(newPos)
     setIsPlayerMoving(true)
-
     clearTimeout(movingTimerRef.current)
     movingTimerRef.current = setTimeout(() => setIsPlayerMoving(false), 250)
 
-    checkProximity(nx, nz)
+    checkProximity(playerPosRef.current[0], playerPosRef.current[2])
   }, [])
 
   // ── Proximity detection ────────────────────────────────────────────────────
@@ -441,7 +460,7 @@ export default function App() {
   // ── D-pad hold-to-move ─────────────────────────────────────────────────────
   const startDpad = useCallback((dir) => {
     movePlayer(dir)
-    holdIntervalRef.current = setInterval(() => movePlayer(dir), 180)
+    holdIntervalRef.current = setInterval(() => movePlayer(dir), 150)
   }, [movePlayer])
 
   const stopDpad = useCallback(() => {
@@ -677,7 +696,6 @@ export default function App() {
       const replyTime = missionTimeRef.current
       setHistory([...newHistory, { role: 'assistant', content: reply, time: replyTime }])
       setSharedLog(prev => [...prev.slice(-11), { char: char.name, text: reply, time: replyTime }])
-      // Update last broadcast on big screen when character responds
       setLastBroadcast({ char: CHAR_LABELS[char.name] || char.name, text: reply })
       speakTTS(reply, char.name)
     } catch {
