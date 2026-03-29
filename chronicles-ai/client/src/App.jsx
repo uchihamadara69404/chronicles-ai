@@ -62,8 +62,8 @@ function FirstPersonCamera({ playerPos, yawRef }) {
 
   useFrame(({ camera }) => {
     const [tx, , tz] = playerPos
-    smooth.current.x += (tx - smooth.current.x) * 0.12
-    smooth.current.z += (tz - smooth.current.z) * 0.12
+    smooth.current.x += (tx - smooth.current.x) * 0.18
+    smooth.current.z += (tz - smooth.current.z) * 0.18
 
     const EYE_Y = 1.75
     camera.position.set(smooth.current.x, EYE_Y, smooth.current.z)
@@ -80,31 +80,28 @@ function FirstPersonCamera({ playerPos, yawRef }) {
 const API = '/api'
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
 
-// ── Tile map — 1 = solid object, 2 = outer wall, 0/4 = walkable ─────────────
-// Uses Math.floor for lookup so there is NO rounding-based ghost buffer.
-// Each '1' tile covers exactly the footprint of a desk/console geometry.
+// ── Collision map — 1=solid, 2=wall, 0/4=walkable ──────────────────────
 const COLLISION_MAP = [
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 0
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 1
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 2
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 3  z=-6
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 4  z=-5 front consoles (1 tile each, gap between)
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 5  z=-4 open aisle
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 6  z=-3 back consoles
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 7  z=-2 back consoles
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 8  z=-1 open aisle
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 9  z=0
-  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 10 z=1
-  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 11 z=2
-  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 12 z=3
-  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 13 z=4
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 14 z=5
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 15 z=6
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 16 z=7
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 3
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 4  front consoles
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 5  aisle
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 6  back consoles
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 7
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 8  aisle
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 9
+  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 10
+  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 11 platform
+  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 12 platform
+  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 13
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 14
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 15
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 16
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 17
 ]
 
-// ── NO Math.round — use Math.floor so tile lookup is exact with no ghost buffer
 const isWalkable = (wx, wz) => {
   const tx = Math.floor(wx + 12.5)
   const tz = Math.floor(wz + 9.5)
@@ -224,9 +221,8 @@ const INTRO_FULL = INTRO_LINES.join('\n')
 
 const PLAYER_START = [0, 0, 5]
 const PROXIMITY_DISTANCE = 1.9
-// Movement step — 0.5 units gives sub-tile precision so gaps between objects
-// are navigable without snapping over them
-const MOVE_STEP = 0.5
+// Units per frame at 60fps — smooth continuous glide, no grid snapping
+const MOVE_SPEED = 0.06
 
 export default function App() {
   const [selectedChar,    setSelectedChar]    = useState(null)
@@ -253,17 +249,23 @@ export default function App() {
   const [timelineBranch,  setTimelineBranch]  = useState('A')
   const [lastBroadcast,   setLastBroadcast]   = useState(null)
 
-  // ── Player movement state ──────────────────────────────────────────────────
+  // ── Player position ────────────────────────────────────────────────────
   const [playerPos,       setPlayerPos]       = useState(PLAYER_START)
   const [isPlayerMoving,  setIsPlayerMoving]  = useState(false)
   const playerPosRef      = useRef(PLAYER_START)
   const greetCooldownRef  = useRef({})
   const movingTimerRef    = useRef(null)
-  const holdIntervalRef   = useRef(null)
   const charPositionsRef  = useRef({ ...HOME_POSITIONS })
   const selectedCharRef   = useRef(null)
   const introPhaseRef     = useRef('typing')
   const chatInputFocused  = useRef(false)
+
+  // ── RAF-based input tracking ─────────────────────────────────────────────
+  // activeKeys: set of currently held direction keys/dpad
+  // dpadDir: active dpad direction vector or null
+  const activeKeysRef     = useRef(new Set())
+  const dpadDirRef        = useRef(null)
+  const rafRef            = useRef(null)
 
   introPhaseRef.current = introPhase
 
@@ -290,7 +292,7 @@ export default function App() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [history])
 
-  // ── Intro typewriter ───────────────────────────────────────────────────────
+  // ── Intro typewriter ──────────────────────────────────────────────────
   useEffect(() => {
     if (introPhase !== 'typing') return
     let i = 0
@@ -347,84 +349,87 @@ export default function App() {
     })
   }, [missionTime, isAlert])
 
-  // ── WASD keyboard movement ─────────────────────────────────────────────────
+  // ── Core move step — called from RAF loop ────────────────────────────────
+  const stepPlayer = useCallback((dir) => {
+    const [px, , pz] = playerPosRef.current
+    const yaw = cameraYawRef.current
+
+    const fwdX = Math.sin(yaw)
+    const fwdZ = Math.cos(yaw)
+    const rgtX = Math.cos(yaw)
+    const rgtZ = -Math.sin(yaw)
+
+    const rawX = (-dir[0] * rgtX - dir[1] * fwdX)
+    const rawZ = (-dir[0] * rgtZ - dir[1] * fwdZ)
+    const len  = Math.sqrt(rawX * rawX + rawZ * rawZ) || 1
+    const nx   = px + (rawX / len) * MOVE_SPEED
+    const nz   = pz + (rawZ / len) * MOVE_SPEED
+
+    let moved = false
+    if (isWalkable(nx, nz)) {
+      playerPosRef.current = [nx, 0, nz]; moved = true
+    } else if (isWalkable(nx, pz)) {
+      playerPosRef.current = [nx, 0, pz]; moved = true
+    } else if (isWalkable(px, nz)) {
+      playerPosRef.current = [px, 0, nz]; moved = true
+    }
+
+    if (moved) {
+      setPlayerPos([...playerPosRef.current])
+      setIsPlayerMoving(true)
+      clearTimeout(movingTimerRef.current)
+      movingTimerRef.current = setTimeout(() => setIsPlayerMoving(false), 150)
+      checkProximity(playerPosRef.current[0], playerPosRef.current[2])
+    }
+  }, [])
+
+  // ── RAF movement loop ──────────────────────────────────────────────────
+  // Every animation frame: read activeKeys + dpadDir, compute combined dir, step
   useEffect(() => {
-    const DIRS = { w: [0,-1], s: [0,1], a: [-1,0], d: [1,0],
-                   arrowup: [0,-1], arrowdown: [0,1], arrowleft: [-1,0], arrowright: [1,0] }
-    const kbIntervalRef = { current: null }
+    const KEY_DIR = {
+      w: [0,-1], arrowup: [0,-1],
+      s: [0, 1], arrowdown: [0, 1],
+      a: [-1,0], arrowleft: [-1,0],
+      d: [ 1,0], arrowright: [ 1,0],
+    }
 
     const onKeyDown = (e) => {
       if (introPhaseRef.current !== 'done') return
       if (chatInputFocused.current) return
       const key = e.key.toLowerCase()
-      if (Object.keys(DIRS).includes(key)) e.preventDefault()
-      if (e.repeat) return
-      const dir = DIRS[key]
-      if (!dir) return
-      clearInterval(kbIntervalRef.current)
-      movePlayer(dir)
-      kbIntervalRef.current = setInterval(() => movePlayer(dir), 140)
+      if (KEY_DIR[key]) { e.preventDefault(); activeKeysRef.current.add(key) }
     }
-
     const onKeyUp = (e) => {
-      const key = e.key.toLowerCase()
-      if (DIRS[key]) {
-        clearInterval(kbIntervalRef.current)
-        kbIntervalRef.current = null
-      }
+      activeKeysRef.current.delete(e.key.toLowerCase())
     }
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup',   onKeyUp)
+
+    const loop = () => {
+      rafRef.current = requestAnimationFrame(loop)
+      if (introPhaseRef.current !== 'done') return
+
+      // Accumulate direction from all held keys + dpad
+      let dx = 0, dz = 0
+      for (const k of activeKeysRef.current) {
+        const d = KEY_DIR[k]
+        if (d) { dx += d[0]; dz += d[1] }
+      }
+      if (dpadDirRef.current) {
+        dx += dpadDirRef.current[0]
+        dz += dpadDirRef.current[1]
+      }
+      if (dx !== 0 || dz !== 0) stepPlayer([dx, dz])
+    }
+    rafRef.current = requestAnimationFrame(loop)
+
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup',   onKeyUp)
-      clearInterval(kbIntervalRef.current)
+      cancelAnimationFrame(rafRef.current)
     }
-  }, [])
-
-  // ── Core move function — yaw-relative, sub-tile steps ─────────────────────
-  const movePlayer = useCallback((dir) => {
-    const [px, , pz] = playerPosRef.current
-    const yaw = cameraYawRef.current
-
-    const fwdX =  Math.sin(yaw)
-    const fwdZ =  Math.cos(yaw)
-    const rgtX =  Math.cos(yaw)
-    const rgtZ = -Math.sin(yaw)
-
-    // Raw direction vector scaled to MOVE_STEP
-    const rawX = (-dir[0] * rgtX - dir[1] * fwdX)
-    const rawZ = (-dir[0] * rgtZ - dir[1] * fwdZ)
-
-    // Normalise and scale so diagonal isn't faster
-    const len = Math.sqrt(rawX * rawX + rawZ * rawZ) || 1
-    const nx = px + (rawX / len) * MOVE_STEP
-    const nz = pz + (rawZ / len) * MOVE_STEP
-
-    // Try full move; if blocked, try axis-sliding
-    if (isWalkable(nx, nz)) {
-      const newPos = [nx, 0, nz]
-      playerPosRef.current = newPos
-      setPlayerPos(newPos)
-    } else if (isWalkable(nx, pz)) {
-      const newPos = [nx, 0, pz]
-      playerPosRef.current = newPos
-      setPlayerPos(newPos)
-    } else if (isWalkable(px, nz)) {
-      const newPos = [px, 0, nz]
-      playerPosRef.current = newPos
-      setPlayerPos(newPos)
-    } else {
-      return // fully blocked
-    }
-
-    setIsPlayerMoving(true)
-    clearTimeout(movingTimerRef.current)
-    movingTimerRef.current = setTimeout(() => setIsPlayerMoving(false), 250)
-
-    checkProximity(playerPosRef.current[0], playerPosRef.current[2])
-  }, [])
+  }, [stepPlayer])
 
   // ── Proximity detection ────────────────────────────────────────────────────
   const checkProximity = useCallback((px, pz) => {
@@ -435,15 +440,13 @@ export default function App() {
         const lastGreet = greetCooldownRef.current[charKey] || 0
         if (now - lastGreet < 12000) return
         greetCooldownRef.current[charKey] = now
-
         const char = { name: charKey, ...CHARACTER_ROLES[charKey] }
         setSelectedChar(char)
         selectedCharRef.current = char
         setHistory([])
         setMessage('')
-
         const greeting = PROXIMITY_GREETINGS[charKey] || 'Yes?'
-        setTimeout(() => { triggerAutoGreet(char, greeting) }, 350)
+        setTimeout(() => triggerAutoGreet(char, greeting), 350)
         break
       }
     }
@@ -451,22 +454,14 @@ export default function App() {
 
   const triggerAutoGreet = useCallback(async (char, greetingText) => {
     const msgTime = missionTimeRef.current
-    const assistantMsg = { role: 'assistant', content: greetingText, time: msgTime }
-    setHistory([assistantMsg])
+    setHistory([{ role: 'assistant', content: greetingText, time: msgTime }])
     setSharedLog(prev => [...prev.slice(-11), { char: char.name, text: greetingText, time: msgTime }])
     speakTTS(greetingText, char.name)
   }, [])
 
-  // ── D-pad hold-to-move ─────────────────────────────────────────────────────
-  const startDpad = useCallback((dir) => {
-    movePlayer(dir)
-    holdIntervalRef.current = setInterval(() => movePlayer(dir), 150)
-  }, [movePlayer])
-
-  const stopDpad = useCallback(() => {
-    clearInterval(holdIntervalRef.current)
-    holdIntervalRef.current = null
-  }, [])
+  // ── D-pad — sets/clears dpadDirRef, RAF loop picks it up ─────────────────
+  const startDpad = useCallback((dir) => { dpadDirRef.current = dir  }, [])
+  const stopDpad  = useCallback(()    => { dpadDirRef.current = null }, [])
 
   // ── Character movement ─────────────────────────────────────────────────────
   const moveCharacter = useCallback((charKey, crisis = false) => {
@@ -483,11 +478,10 @@ export default function App() {
   // ── Broadcast ──────────────────────────────────────────────────────────────
   const showBroadcast = useCallback((charKey, text) => {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
-    const bc = { charKey, text, color: CHAR_COLORS[charKey] || '#4af' }
-    setBroadcast(bc)
+    setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
     setLastBroadcast({ char: CHAR_LABELS[charKey] || charKey, text })
     setSharedLog(prev => [...prev.slice(-11), { char: charKey, text, time: missionTimeRef.current }])
-    broadcastTimerRef.current = setTimeout(() => { setBroadcast(null) }, 8000)
+    broadcastTimerRef.current = setTimeout(() => setBroadcast(null), 8000)
   }, [])
 
   // ── Physics evaluation ─────────────────────────────────────────────────────
@@ -706,7 +700,7 @@ export default function App() {
 
   const exportTranscript = () => {
     if (sharedLog.length === 0) return
-    const lines = [`APOLLO 13 MISSION TRANSCRIPT`, `Generated: ${formatMissionTime(missionTimeRef.current)}`, `Timeline: ${timelineBranch}`, `${'═'.repeat(42)}`, '']
+    const lines = [`APOLLO 13 MISSION TRANSCRIPT`, `Generated: ${formatMissionTime(missionTimeRef.current)}`, `Timeline: ${timelineBranch}`, `${'\u2550'.repeat(42)}`, '']
     sharedLog.forEach(e => { lines.push(`[${formatMissionTime(e.time)}] ${CHAR_LABELS[e.char] || e.char}`); lines.push(e.text); lines.push('') })
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
@@ -746,13 +740,9 @@ export default function App() {
   return (
     <div className="app-root" style={{ background: isAlert ? '#0d0000' : '#0a0a1a' }} onClick={handleGlobalClick}>
       <Canvas camera={{ position: [0, 1.75, 6], fov: 75, near: 0.05, far: 120 }} shadows>
-        {/* Bright general ambient so the room is readable */}
         <ambientLight intensity={isAlert ? 0.55 : 0.90} color={isAlert ? '#ffccaa' : '#cce4ff'} />
-        {/* Main key light from above-front */}
         <directionalLight position={[0, 10, 6]}  intensity={isAlert ? 0.8 : 1.4} castShadow color={isAlert ? '#ffddcc' : '#ffffff'} />
-        {/* Fill from behind screen wall */}
         <directionalLight position={[0, 6, -10]} intensity={isAlert ? 0.3 : 0.5} color={isAlert ? '#ff6633' : '#aaccff'} />
-        {/* Side fills */}
         <directionalLight position={[-8, 5, 0]}  intensity={0.25} color={isAlert ? '#ff5500' : '#99bbdd'} />
         <directionalLight position={[ 8, 5, 0]}  intensity={0.25} color={isAlert ? '#ff5500' : '#99bbdd'} />
         <World
