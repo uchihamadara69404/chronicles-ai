@@ -1,5 +1,6 @@
 import Tile from './Tile'
 import Character from '../characters/Character'
+import Player from '../characters/Player'
 
 const MAP = [
   [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
@@ -33,8 +34,6 @@ const TILE_HEIGHTS = {
   3: 0.2,
 }
 
-// Static character definitions — position is the HOME position
-// charPositions prop overrides with current target per character
 const CHARACTER_DEFS = [
   { id: 'kranz',     name: 'KRANZ',  color: '#ffffff', home: [0,  0,  2]  },
   { id: 'engineer1', name: 'ENG-1',  color: '#4af0c0', home: [-4, 0, -1]  },
@@ -49,7 +48,9 @@ export default function World({
   onCharacterSelect,
   selectedChar,
   talkingChar,
-  charPositions,   // { [charKey]: [x, y, z] } — from App.jsx
+  charPositions,
+  playerPos,
+  isPlayerMoving,
 }) {
   const offsetX = -(MAP[0].length / 2)
   const offsetZ = -(MAP.length / 2)
@@ -66,8 +67,8 @@ export default function World({
           />
         ))
       )}
+
       {CHARACTER_DEFS.map(c => {
-        // Use dynamic position if provided, else home position
         const pos = charPositions?.[c.name] ?? c.home
         return (
           <Character
@@ -82,6 +83,8 @@ export default function World({
           />
         )
       })}
+
+      <Player position={playerPos} isMoving={isPlayerMoving} />
     </group>
   )
 }
