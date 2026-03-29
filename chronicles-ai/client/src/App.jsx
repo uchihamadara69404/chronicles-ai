@@ -2,36 +2,78 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import World from './world/World'
 
-// ── First-person camera — tracks player's smooth world position + facing ─────
-function FirstPersonCamera({ playerPos }) {
-  const smooth   = useRef({ x: playerPos[0], z: playerPos[2] })
-  const prevGrid = useRef({ x: playerPos[0], z: playerPos[2] })
-  const faceDir  = useRef({ x: 0, z: -1 }) // default: face toward screen (north)
+// ── FPS Camera — position follows player, look direction = mouse/touch drag ──
+function FirstPersonCamera({ playerPos, yawRef }) {
+  const smooth  = useRef({ x: playerPos[0], z: playerPos[2] })
+  const pitch   = useRef(0)
+  const isDrag  = useRef(false)
+  const lastPos = useRef({ x: 0, y: 0 })
+
+  useEffect(() => {
+    const SENSITIVITY = 0.004
+
+    const onMouseDown = (e) => {
+      isDrag.current  = true
+      lastPos.current = { x: e.clientX, y: e.clientY }
+    }
+    const onMouseMove = (e) => {
+      if (!isDrag.current) return
+      const dx = e.clientX - lastPos.current.x
+      const dy = e.clientY - lastPos.current.y
+      lastPos.current = { x: e.clientX, y: e.clientY }
+      yawRef.current  -= dx * SENSITIVITY
+      pitch.current   -= dy * SENSITIVITY
+      pitch.current    = Math.max(-0.6, Math.min(0.6, pitch.current))
+    }
+    const onMouseUp = () => { isDrag.current = false }
+
+    const onTouchStart = (e) => {
+      if (e.target.closest('.chat-panel, .dpad, .topbar, .hud, .telemetry, .broadcast, .decision-overlay, .eval-panel')) return
+      isDrag.current  = true
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    }
+    const onTouchMove = (e) => {
+      if (!isDrag.current) return
+      const dx = e.touches[0].clientX - lastPos.current.x
+      const dy = e.touches[0].clientY - lastPos.current.y
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      yawRef.current  -= dx * SENSITIVITY
+      pitch.current   -= dy * SENSITIVITY
+      pitch.current    = Math.max(-0.6, Math.min(0.6, pitch.current))
+    }
+    const onTouchEnd = () => { isDrag.current = false }
+
+    window.addEventListener('mousedown',  onMouseDown)
+    window.addEventListener('mousemove',  onMouseMove)
+    window.addEventListener('mouseup',    onMouseUp)
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove',  onTouchMove,  { passive: true })
+    window.addEventListener('touchend',   onTouchEnd)
+
+    return () => {
+      window.removeEventListener('mousedown',  onMouseDown)
+      window.removeEventListener('mousemove',  onMouseMove)
+      window.removeEventListener('mouseup',    onMouseUp)
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove',  onTouchMove)
+      window.removeEventListener('touchend',   onTouchEnd)
+    }
+  }, [])
 
   useFrame(({ camera }) => {
     const [tx, , tz] = playerPos
-
-    // When the logical grid position changes, update facing direction
-    const gdx = tx - prevGrid.current.x
-    const gdz = tz - prevGrid.current.z
-    if (Math.abs(gdx) + Math.abs(gdz) > 0.5) {
-      const len = Math.sqrt(gdx * gdx + gdz * gdz)
-      faceDir.current = { x: gdx / len, z: gdz / len }
-      prevGrid.current = { x: tx, z: tz }
-    }
-
-    // Lerp to smooth position (matches Player.jsx rate)
     smooth.current.x += (tx - smooth.current.x) * 0.12
     smooth.current.z += (tz - smooth.current.z) * 0.12
 
     const EYE_Y = 1.75
     camera.position.set(smooth.current.x, EYE_Y, smooth.current.z)
-    camera.lookAt(
-      smooth.current.x + faceDir.current.x,
-      EYE_Y,
-      smooth.current.z + faceDir.current.z
-    )
+
+    const lookX = smooth.current.x + Math.sin(yawRef.current) * Math.cos(pitch.current)
+    const lookY = EYE_Y            + Math.sin(pitch.current)
+    const lookZ = smooth.current.z + Math.cos(yawRef.current) * Math.cos(pitch.current)
+    camera.lookAt(lookX, lookY, lookZ)
   })
+
   return null
 }
 
@@ -39,9 +81,6 @@ const API = '/api'
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
 
 // ── Tile map (mirrored from World.jsx for collision detection) ──────────────
-// Map: 25 wide × 18 tall. offsetX=−12, offsetZ=−9
-// World coords: tile_x = wx+12, tile_z = wz+9
-// Walkable: 0 (floor), 4 (elevated platform)
 const COLLISION_MAP = [
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 0  z=-9 outer wall
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 1  z=-8 screen wall
@@ -68,7 +107,7 @@ const isWalkable = (wx, wz) => {
   const tz = Math.round(wz + 9)
   if (tx < 0 || tx >= 25 || tz < 0 || tz >= 18) return false
   const t = COLLISION_MAP[tz][tx]
-  return t === 0 || t === 4 // floor or elevated platform
+  return t === 0 || t === 4
 }
 
 // ── Character data ──────────────────────────────────────────────────────────
@@ -97,7 +136,6 @@ const CHARACTER_ROLES = {
   'ENG-5': { title: 'DOC — Flight Surgeon',     color: '#ffa0a0', bio: 'Monitors crew health and vital signs.' },
 }
 
-// What the character says when you walk up to them
 const PROXIMITY_GREETINGS = {
   'KRANZ': 'Someone just walked up to my console. State your business — fast.',
   'ENG-1': 'Hey — you heading to Flight? I can give you a quick trajectory update.',
@@ -177,7 +215,7 @@ const INTRO_LINES = [
   "",
   "[ CLICK ANYWHERE TO ENTER ]",
   "",
-  "WASD or D-PAD to move · Walk up to a character to talk",
+  "WASD or D-PAD to move · Click & drag to look around",
 ]
 const INTRO_FULL = INTRO_LINES.join('\n')
 
@@ -212,9 +250,9 @@ export default function App() {
   const [playerPos,       setPlayerPos]       = useState(PLAYER_START)
   const [isPlayerMoving,  setIsPlayerMoving]  = useState(false)
   const playerPosRef      = useRef(PLAYER_START)
-  const greetCooldownRef  = useRef({})   // { charKey: timestamp }
+  const greetCooldownRef  = useRef({})
   const movingTimerRef    = useRef(null)
-  const holdIntervalRef   = useRef(null) // for D-pad hold-to-move
+  const holdIntervalRef   = useRef(null)
   const charPositionsRef  = useRef({ ...HOME_POSITIONS })
   const selectedCharRef   = useRef(null)
   const introPhaseRef     = useRef('typing')
@@ -234,15 +272,13 @@ export default function App() {
   const touchStartXRef    = useRef(null)
   const broadcastTimerRef = useRef(null)
   const missionTimeRef    = useRef(0)
-  // orbitRef removed in favor of FirstPersonCamera
+  const cameraYawRef      = useRef(Math.PI) // shared with FirstPersonCamera
   missionTimeRef.current  = missionTime
 
-  // keep charPositionsRef in sync
   useEffect(() => { charPositionsRef.current = charPositions }, [charPositions])
   useEffect(() => { selectedCharRef.current  = selectedChar  }, [selectedChar])
 
   const missionMet = () => 55.92 + missionTimeRef.current / 3600
-  // orbitRef removed — first-person camera needs no OrbitControls
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [history])
 
@@ -303,7 +339,7 @@ export default function App() {
     })
   }, [missionTime, isAlert])
 
-  // ── WASD keyboard movement (own timed repeat — same feel as D-pad) ───────────
+  // ── WASD keyboard movement ─────────────────────────────────────────────────
   useEffect(() => {
     const DIRS = { w: [0,-1], s: [0,1], a: [-1,0], d: [1,0],
                    arrowup: [0,-1], arrowdown: [0,1], arrowleft: [-1,0], arrowright: [1,0] }
@@ -313,7 +349,6 @@ export default function App() {
       if (introPhaseRef.current !== 'done') return
       const key = e.key.toLowerCase()
       if (Object.keys(DIRS).includes(key)) e.preventDefault()
-      // Ignore OS key-repeat — we handle our own repeat below
       if (e.repeat) return
       const dir = DIRS[key]
       if (!dir) return
@@ -339,15 +374,27 @@ export default function App() {
     }
   }, [])
 
-  // ── Core move function (shared by keyboard + D-pad) ────────────────────────
+  // ── Core move function — yaw-relative so controls match where you're looking
   const movePlayer = useCallback((dir) => {
     const [px, , pz] = playerPosRef.current
-    const nx = px + dir[0]
-    const nz = pz + dir[1]
+    const yaw = cameraYawRef.current
+
+    // Forward/right vectors derived from current camera yaw
+    const fwdX =  Math.sin(yaw)
+    const fwdZ =  Math.cos(yaw)
+    const rgtX =  Math.cos(yaw)
+    const rgtZ = -Math.sin(yaw)
+
+    // dir[0] = strafe (A/D), dir[1] = forward/back (W/S)
+    const moveX = dir[0] * rgtX + dir[1] * fwdX
+    const moveZ = dir[0] * rgtZ + dir[1] * fwdZ
+
+    // Snap to dominant grid axis for tile-by-tile movement
+    const nx = px + Math.round(moveX)
+    const nz = pz + Math.round(moveZ)
 
     if (!isWalkable(nx, nz)) return
 
-    // Block walking into a character
     const blocked = Object.values(charPositionsRef.current).some(([cx, , cz]) =>
       Math.abs(cx - nx) < 0.6 && Math.abs(cz - nz) < 0.6
     )
@@ -371,7 +418,7 @@ export default function App() {
       const dist = Math.sqrt((px - cx) ** 2 + (pz - cz) ** 2)
       if (dist < PROXIMITY_DISTANCE) {
         const lastGreet = greetCooldownRef.current[charKey] || 0
-        if (now - lastGreet < 12000) return // 12s cooldown per character
+        if (now - lastGreet < 12000) return
         greetCooldownRef.current[charKey] = now
 
         const char = { name: charKey, ...CHARACTER_ROLES[charKey] }
@@ -380,18 +427,14 @@ export default function App() {
         setHistory([])
         setMessage('')
 
-        // Auto-greet after brief delay so state settles
         const greeting = PROXIMITY_GREETINGS[charKey] || 'Yes?'
-        setTimeout(() => {
-          triggerAutoGreet(char, greeting)
-        }, 350)
+        setTimeout(() => { triggerAutoGreet(char, greeting) }, 350)
         break
       }
     }
   }, [])
 
   const triggerAutoGreet = useCallback(async (char, greetingText) => {
-    // Show the greeting as if the character initiated it
     const msgTime = missionTimeRef.current
     const assistantMsg = { role: 'assistant', content: greetingText, time: msgTime }
     setHistory([assistantMsg])
@@ -427,10 +470,7 @@ export default function App() {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
     setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
     setSharedLog(prev => [...prev.slice(-11), { char: charKey, text, time: missionTimeRef.current }])
-    // NPCs stay at home positions — only isTalking flag changes (via talkingChar)
-    broadcastTimerRef.current = setTimeout(() => {
-      setBroadcast(null)
-    }, 8000)
+    broadcastTimerRef.current = setTimeout(() => { setBroadcast(null) }, 8000)
   }, [])
 
   // ── Physics evaluation ─────────────────────────────────────────────────────
@@ -582,7 +622,6 @@ export default function App() {
       setO2(82); setPower(74)
       alertStartTimeRef.current = missionTimeRef.current
       playAlarm()
-      // NPCs stay fixed — alert visual state handled by isAlert prop
     } else {
       setO2(100); setPower(100)
       alertStartTimeRef.current = null
@@ -702,7 +741,7 @@ export default function App() {
           playerPos={playerPos}
           isPlayerMoving={isPlayerMoving}
         />
-        <FirstPersonCamera playerPos={playerPos} />
+        <FirstPersonCamera playerPos={playerPos} yawRef={cameraYawRef} />
       </Canvas>
 
       {/* INTRO */}
@@ -919,7 +958,7 @@ export default function App() {
       )}
 
       {!selectedChar && introPhase === 'done' && (
-        <div className="bottom-hint">WASD · D-PAD TO MOVE · WALK UP TO CHARACTERS TO TALK</div>
+        <div className="bottom-hint">WASD · D-PAD TO MOVE · DRAG TO LOOK AROUND</div>
       )}
 
       <style>{`
