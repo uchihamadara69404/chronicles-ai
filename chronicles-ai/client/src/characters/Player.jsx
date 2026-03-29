@@ -77,10 +77,10 @@ export default function Player({ position, isMoving }) {
   return (
     // No position prop — useFrame drives it exclusively to avoid R3F snapping
     <group ref={groupRef}>
-      {/* Cyan glow ring */}
+      {/* Red glow ring — follows smooth world position (inside lerp group) */}
       <mesh position={[0, 0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.3, 0.48, 24]} />
-        <meshBasicMaterial color="#00ffff" opacity={0.55} transparent />
+        <ringGeometry args={[0.3, 0.50, 24]} />
+        <meshBasicMaterial color="#ff2200" opacity={0.75} transparent />
       </mesh>
 
       {/* Shadow */}
@@ -130,7 +130,7 @@ export default function Player({ position, isMoving }) {
       <Text
         position={[0, 1.42, 0]}
         fontSize={0.2}
-        color="#00ffff"
+        color="#ff3300"
         anchorX="center"
         anchorY="middle"
         outlineWidth={0.03}

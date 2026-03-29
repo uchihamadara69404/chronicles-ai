@@ -38,26 +38,11 @@ export default function World({
       {/* FLOOR                                                                  */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
 
-      {/* Main floor slab */}
+      {/* Main floor slab — medium dark navy so walls/desks stand out */}
       <mesh position={[0, 0.05, -0.5]} receiveShadow>
         <boxGeometry args={[25, 0.1, 18]} />
-        <meshLambertMaterial color={alert ? '#100808' : '#090912'} />
+        <meshLambertMaterial color={alert ? '#1a0505' : '#182035'} />
       </mesh>
-
-      {/* Floor grid lines — X axis */}
-      {Array.from({ length: 26 }, (_, i) => (
-        <mesh key={`gx${i}`} position={[-12 + i, 0.11, -0.5]}>
-          <boxGeometry args={[0.018, 0.018, 18]} />
-          <meshBasicMaterial color="#0b0f22" />
-        </mesh>
-      ))}
-      {/* Floor grid lines — Z axis */}
-      {Array.from({ length: 19 }, (_, i) => (
-        <mesh key={`gz${i}`} position={[0, 0.11, -9 + i]}>
-          <boxGeometry args={[25, 0.018, 0.018]} />
-          <meshBasicMaterial color="#0b0f22" />
-        </mesh>
-      ))}
 
       {/* Accent floor strips */}
       <FloorStrip z={-6.0} color={accentCol}  alpha={0.9} />
@@ -69,10 +54,10 @@ export default function World({
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {/* OUTER WALLS                                                            */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
-      <mesh position={[0,  1.8, -9.4]}><boxGeometry args={[26, 3.6, 0.4]} /><meshLambertMaterial color="#060810" /></mesh>
-      <mesh position={[0,  1.8,  8.4]}><boxGeometry args={[26, 3.6, 0.4]} /><meshLambertMaterial color="#060810" /></mesh>
-      <mesh position={[ 12.7, 1.8, -0.5]}><boxGeometry args={[0.4, 3.6, 18.8]} /><meshLambertMaterial color="#060810" /></mesh>
-      <mesh position={[-12.7, 1.8, -0.5]}><boxGeometry args={[0.4, 3.6, 18.8]} /><meshLambertMaterial color="#060810" /></mesh>
+      <mesh position={[0,  1.8, -9.4]}><boxGeometry args={[26, 3.6, 0.4]} /><meshLambertMaterial color="#0d1122" /></mesh>
+      <mesh position={[0,  1.8,  8.4]}><boxGeometry args={[26, 3.6, 0.4]} /><meshLambertMaterial color="#0d1122" /></mesh>
+      <mesh position={[ 12.7, 1.8, -0.5]}><boxGeometry args={[0.4, 3.6, 18.8]} /><meshLambertMaterial color="#0d1122" /></mesh>
+      <mesh position={[-12.7, 1.8, -0.5]}><boxGeometry args={[0.4, 3.6, 18.8]} /><meshLambertMaterial color="#0d1122" /></mesh>
 
       {/* Side wall accent panels */}
       {[-4, -1, 2, 5].map(z => (
@@ -160,10 +145,10 @@ export default function World({
       {/* KRANZ COMMAND PLATFORM  (z = 1 to 4, elevated +0.35)                  */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
 
-      {/* Platform slab */}
+      {/* Platform slab — warm steel-blue tone distinct from floor */}
       <mesh position={[0, 0.17, 2.5]} receiveShadow>
         <boxGeometry args={[21, 0.34, 3.4]} />
-        <meshLambertMaterial color={alert ? '#150508' : '#0c1030'} />
+        <meshLambertMaterial color={alert ? '#250a0a' : '#1c2545'} />
       </mesh>
 
       {/* Platform front / back edge lights */}
@@ -238,12 +223,11 @@ function FloorStrip({ z, color }) {
 }
 
 function WallPanel({ x, z, color }) {
-  const side = x < 0 ? 1 : -1
   return (
     <group position={[x, 1.0, z]}>
       <mesh rotation={[0, Math.PI / 2, 0]}>
         <boxGeometry args={[1.6, 1.3, 0.08]} />
-        <meshLambertMaterial color="#06080f" />
+        <meshLambertMaterial color="#141c32" />
       </mesh>
       <mesh position={[0, 0.55, 0]} rotation={[0, Math.PI / 2, 0]}>
         <boxGeometry args={[1.4, 0.05, 0.12]} />
@@ -290,27 +274,27 @@ function ScreenLight({ alert }) {
 }
 
 function ConsoleDesk({ position, alert }) {
-  const monColor  = alert ? '#330a00' : '#002235'
-  const glowColor = alert ? '#ff3300' : '#00aaff'
-  const accentCol = alert ? '#ff4400' : '#4488ff'
+  const monColor  = alert ? '#330a00' : '#001e33'
+  const glowColor = alert ? '#ff3300' : '#00c8ff'
+  const accentCol = alert ? '#ff4400' : '#4499ff'
 
   return (
     <group position={position}>
-      {/* Desk surface */}
+      {/* Desk surface — warm steel-gray, clearly distinct from floor */}
       <mesh castShadow receiveShadow position={[0, 0.06, 0]}>
         <boxGeometry args={[3.5, 0.12, 0.9]} />
-        <meshLambertMaterial color="#0d1535" />
+        <meshLambertMaterial color="#2a3558" />
       </mesh>
       {/* Front face panel */}
       <mesh position={[0, -0.28, 0.46]}>
         <boxGeometry args={[3.5, 0.56, 0.06]} />
-        <meshLambertMaterial color="#08102a" />
+        <meshLambertMaterial color="#1a2240" />
       </mesh>
       {/* Desk legs */}
       {[-1.55, 1.55].map((x, i) => (
         <mesh key={i} position={[x, -0.35, 0]}>
           <boxGeometry args={[0.1, 0.7, 0.7]} />
-          <meshLambertMaterial color="#060c1e" />
+          <meshLambertMaterial color="#141c30" />
         </mesh>
       ))}
       {/* Monitors (slightly tilted back, on north face of desk) */}
@@ -347,27 +331,27 @@ function ConsoleDesk({ position, alert }) {
 }
 
 function CommandDesk({ position, alert }) {
-  const monColor  = alert ? '#2a0500' : '#002040'
-  const glowColor = alert ? '#ff3300' : '#00aaff'
-  const accentCol = alert ? '#ff4400' : '#4488ff'
+  const monColor  = alert ? '#2a0500' : '#001e38'
+  const glowColor = alert ? '#ff3300' : '#00c8ff'
+  const accentCol = alert ? '#ff4400' : '#4499ff'
 
   return (
     <group position={position}>
-      {/* Wide curved desk surface */}
+      {/* Wide command desk surface — lighter warm-blue so it pops on the platform */}
       <mesh castShadow receiveShadow position={[0, 0.07, 0]}>
         <boxGeometry args={[6, 0.14, 1.1]} />
-        <meshLambertMaterial color="#0f1a45" />
+        <meshLambertMaterial color="#303d65" />
       </mesh>
       {/* Front panel */}
       <mesh position={[0, -0.32, 0.58]}>
         <boxGeometry args={[6, 0.64, 0.08]} />
-        <meshLambertMaterial color="#09102e" />
+        <meshLambertMaterial color="#1e2848" />
       </mesh>
       {/* Desk legs */}
       {[-2.7, 0, 2.7].map((x, i) => (
         <mesh key={i} position={[x, -0.42, 0]}>
           <boxGeometry args={[0.12, 0.84, 0.8]} />
-          <meshLambertMaterial color="#070c1e" />
+          <meshLambertMaterial color="#151e35" />
         </mesh>
       ))}
       {/* Large center monitor */}

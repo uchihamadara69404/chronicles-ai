@@ -1,18 +1,36 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
 import World from './world/World'
 
-function CameraFollower({ playerPos, orbitRef }) {
-  const smoothPos = useRef({ x: playerPos[0], z: playerPos[2] })
-  useFrame(() => {
-    const [px, , pz] = playerPos
-    smoothPos.current.x += (px - smoothPos.current.x) * 0.08
-    smoothPos.current.z += (pz - smoothPos.current.z) * 0.08
-    if (orbitRef.current) {
-      orbitRef.current.target.set(smoothPos.current.x, 0, smoothPos.current.z)
-      orbitRef.current.update()
+// ── First-person camera — tracks player's smooth world position + facing ─────
+function FirstPersonCamera({ playerPos }) {
+  const smooth   = useRef({ x: playerPos[0], z: playerPos[2] })
+  const prevGrid = useRef({ x: playerPos[0], z: playerPos[2] })
+  const faceDir  = useRef({ x: 0, z: -1 }) // default: face toward screen (north)
+
+  useFrame(({ camera }) => {
+    const [tx, , tz] = playerPos
+
+    // When the logical grid position changes, update facing direction
+    const gdx = tx - prevGrid.current.x
+    const gdz = tz - prevGrid.current.z
+    if (Math.abs(gdx) + Math.abs(gdz) > 0.5) {
+      const len = Math.sqrt(gdx * gdx + gdz * gdz)
+      faceDir.current = { x: gdx / len, z: gdz / len }
+      prevGrid.current = { x: tx, z: tz }
     }
+
+    // Lerp to smooth position (matches Player.jsx rate)
+    smooth.current.x += (tx - smooth.current.x) * 0.12
+    smooth.current.z += (tz - smooth.current.z) * 0.12
+
+    const EYE_Y = 1.75
+    camera.position.set(smooth.current.x, EYE_Y, smooth.current.z)
+    camera.lookAt(
+      smooth.current.x + faceDir.current.x,
+      EYE_Y,
+      smooth.current.z + faceDir.current.z
+    )
   })
   return null
 }
@@ -216,7 +234,7 @@ export default function App() {
   const touchStartXRef    = useRef(null)
   const broadcastTimerRef = useRef(null)
   const missionTimeRef    = useRef(0)
-  const orbitRef          = useRef(null)
+  // orbitRef removed in favor of FirstPersonCamera
   missionTimeRef.current  = missionTime
 
   // keep charPositionsRef in sync
@@ -224,6 +242,7 @@ export default function App() {
   useEffect(() => { selectedCharRef.current  = selectedChar  }, [selectedChar])
 
   const missionMet = () => 55.92 + missionTimeRef.current / 3600
+  // orbitRef removed — first-person camera needs no OrbitControls
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [history])
 
@@ -408,12 +427,11 @@ export default function App() {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
     setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
     setSharedLog(prev => [...prev.slice(-11), { char: charKey, text, time: missionTimeRef.current }])
-    moveCharacter(charKey, true)
+    // NPCs stay at home positions — only isTalking flag changes (via talkingChar)
     broadcastTimerRef.current = setTimeout(() => {
       setBroadcast(null)
-      moveCharacter(charKey, false)
     }, 8000)
-  }, [moveCharacter])
+  }, [])
 
   // ── Physics evaluation ─────────────────────────────────────────────────────
   const runEvaluation = useCallback(async (type, params, label = '') => {
@@ -564,13 +582,11 @@ export default function App() {
       setO2(82); setPower(74)
       alertStartTimeRef.current = missionTimeRef.current
       playAlarm()
-      moveCharacter('KRANZ', true)
-      moveCharacter('ENG-3', true)
+      // NPCs stay fixed — alert visual state handled by isAlert prop
     } else {
       setO2(100); setPower(100)
       alertStartTimeRef.current = null
       crisisEventsRef.current = new Set()
-      resetCharacterPositions()
     }
   }
 
@@ -581,7 +597,6 @@ export default function App() {
       setIsAlert(true); setO2(82); setPower(74)
       alertStartTimeRef.current = missionTimeRef.current
       playAlarm()
-      moveCharacter('KRANZ', true); moveCharacter('ENG-3', true)
       showBroadcast('KRANZ', "This is now a contingency. All stations — declaring an emergency. Failure is not an option.")
     } else {
       showBroadcast('KRANZ', "Copy. All stations, stand by. Continue monitoring. I want answers in five minutes.")
@@ -673,10 +688,11 @@ export default function App() {
 
   return (
     <div className="app-root" style={{ background: isAlert ? '#0d0000' : '#0a0a1a' }} onClick={handleGlobalClick}>
-      <Canvas camera={{ position: [0, 14, 10], fov: 50 }} shadows>
-        <ambientLight intensity={isAlert ? 0.2 : 0.4} />
-        <directionalLight position={[10, 20, 10]} intensity={1} castShadow />
-        <pointLight position={[0, 5, 0]} color={isAlert ? '#ff0000' : '#4466ff'} intensity={isAlert ? 1.5 : 0.3} />
+      <Canvas camera={{ position: [0, 1.75, 6], fov: 75, near: 0.05, far: 120 }} shadows>
+        <ambientLight intensity={isAlert ? 0.35 : 0.65} />
+        <directionalLight position={[5, 12, 8]}  intensity={1.1} castShadow />
+        <directionalLight position={[-5, 8, -10]} intensity={0.4} />
+        <pointLight position={[0, 3, -7]} color={isAlert ? '#ff2200' : '#5588ff'} intensity={isAlert ? 2 : 0.8} distance={14} />
         <World
           isAlert={isAlert}
           onCharacterSelect={handleSelect}
@@ -686,13 +702,7 @@ export default function App() {
           playerPos={playerPos}
           isPlayerMoving={isPlayerMoving}
         />
-        <OrbitControls
-          ref={orbitRef}
-          maxPolarAngle={Math.PI / 2.8}
-          minDistance={8}
-          maxDistance={25}
-        />
-        <CameraFollower playerPos={playerPos} orbitRef={orbitRef} />
+        <FirstPersonCamera playerPos={playerPos} />
       </Canvas>
 
       {/* INTRO */}
