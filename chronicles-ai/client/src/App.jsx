@@ -81,14 +81,12 @@ const API = '/api'
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
 
 // ── Tile map (mirrored from World.jsx for collision detection) ──────────────
-// FIX: Opened up the console rows so player can walk through them more freely.
-// Only the actual desk-blocking tiles remain solid (1); aisle tiles are 0.
 const COLLISION_MAP = [
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 0
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 1
   [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 2
   [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 3  z=-6
-  [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 4  z=-5 front consoles (narrower blocks)
+  [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 4  z=-5 front consoles
   [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 5  z=-4 open aisle
   [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 6  z=-3 back consoles
   [2,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,0,2], // row 7  z=-2 back consoles
@@ -247,6 +245,8 @@ export default function App() {
   const [charPositions,   setCharPositions]   = useState({ ...HOME_POSITIONS })
   const [evalResult,      setEvalResult]      = useState(null)
   const [timelineBranch,  setTimelineBranch]  = useState('A')
+  // last broadcast for big screen
+  const [lastBroadcast,   setLastBroadcast]   = useState(null)
 
   // ── Player movement state ──────────────────────────────────────────────────
   const [playerPos,       setPlayerPos]       = useState(PLAYER_START)
@@ -379,8 +379,6 @@ export default function App() {
   }, [])
 
   // ── Core move function — yaw-relative ──────────────────────────────────────
-  // FIX: Removed NPC collision blocking — NPCs stand on their tile but the
-  // player is not hard-blocked by them. The map tiles handle real walls.
   const movePlayer = useCallback((dir) => {
     const [px, , pz] = playerPosRef.current
     const yaw = cameraYawRef.current
@@ -397,9 +395,6 @@ export default function App() {
     const nz = pz + Math.round(moveZ)
 
     if (!isWalkable(nx, nz)) return
-
-    // NPC collision removed — player can walk near/through NPCs freely.
-    // NPCs are visual only; the tile map handles real obstacle avoidance.
 
     const newPos = [nx, 0, nz]
     playerPosRef.current = newPos
@@ -469,7 +464,9 @@ export default function App() {
   // ── Broadcast ──────────────────────────────────────────────────────────────
   const showBroadcast = useCallback((charKey, text) => {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
-    setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
+    const bc = { charKey, text, color: CHAR_COLORS[charKey] || '#4af' }
+    setBroadcast(bc)
+    setLastBroadcast({ char: CHAR_LABELS[charKey] || charKey, text })
     setSharedLog(prev => [...prev.slice(-11), { char: charKey, text, time: missionTimeRef.current }])
     broadcastTimerRef.current = setTimeout(() => { setBroadcast(null) }, 8000)
   }, [])
@@ -680,6 +677,8 @@ export default function App() {
       const replyTime = missionTimeRef.current
       setHistory([...newHistory, { role: 'assistant', content: reply, time: replyTime }])
       setSharedLog(prev => [...prev.slice(-11), { char: char.name, text: reply, time: replyTime }])
+      // Update last broadcast on big screen when character responds
+      setLastBroadcast({ char: CHAR_LABELS[char.name] || char.name, text: reply })
       speakTTS(reply, char.name)
     } catch {
       setHistory([...newHistory, { role: 'assistant', content: '[COMMS FAILURE]', time: msgTime }])
@@ -729,10 +728,15 @@ export default function App() {
   return (
     <div className="app-root" style={{ background: isAlert ? '#0d0000' : '#0a0a1a' }} onClick={handleGlobalClick}>
       <Canvas camera={{ position: [0, 1.75, 6], fov: 75, near: 0.05, far: 120 }} shadows>
-        <ambientLight intensity={isAlert ? 0.35 : 0.65} />
-        <directionalLight position={[5, 12, 8]}  intensity={1.1} castShadow />
-        <directionalLight position={[-5, 8, -10]} intensity={0.4} />
-        <pointLight position={[0, 3, -7]} color={isAlert ? '#ff2200' : '#5588ff'} intensity={isAlert ? 2 : 0.8} distance={14} />
+        {/* Bright general ambient so the room is readable */}
+        <ambientLight intensity={isAlert ? 0.55 : 0.90} color={isAlert ? '#ffccaa' : '#cce4ff'} />
+        {/* Main key light from above-front */}
+        <directionalLight position={[0, 10, 6]}  intensity={isAlert ? 0.8 : 1.4} castShadow color={isAlert ? '#ffddcc' : '#ffffff'} />
+        {/* Fill from behind screen wall */}
+        <directionalLight position={[0, 6, -10]} intensity={isAlert ? 0.3 : 0.5} color={isAlert ? '#ff6633' : '#aaccff'} />
+        {/* Side fills */}
+        <directionalLight position={[-8, 5, 0]}  intensity={0.25} color={isAlert ? '#ff5500' : '#99bbdd'} />
+        <directionalLight position={[ 8, 5, 0]}  intensity={0.25} color={isAlert ? '#ff5500' : '#99bbdd'} />
         <World
           isAlert={isAlert}
           onCharacterSelect={handleSelect}
@@ -741,6 +745,12 @@ export default function App() {
           charPositions={charPositions}
           playerPos={playerPos}
           isPlayerMoving={isPlayerMoving}
+          telemetry={telemetry}
+          o2={o2}
+          power={power}
+          missionTime={missionTime}
+          timelineBranch={timelineBranch}
+          lastBroadcast={lastBroadcast}
         />
         <FirstPersonCamera playerPos={playerPos} yawRef={cameraYawRef} />
       </Canvas>
