@@ -256,6 +256,8 @@ export default function App() {
   const charPositionsRef  = useRef({ ...HOME_POSITIONS })
   const selectedCharRef   = useRef(null)
   const introPhaseRef     = useRef('typing')
+  // Track whether the chat input is focused so WASD doesn't fire
+  const chatInputFocused  = useRef(false)
 
   introPhaseRef.current = introPhase
 
@@ -347,6 +349,8 @@ export default function App() {
 
     const onKeyDown = (e) => {
       if (introPhaseRef.current !== 'done') return
+      // If chat input is focused, let the browser handle the key normally
+      if (chatInputFocused.current) return
       const key = e.key.toLowerCase()
       if (Object.keys(DIRS).includes(key)) e.preventDefault()
       if (e.repeat) return
@@ -379,15 +383,17 @@ export default function App() {
     const [px, , pz] = playerPosRef.current
     const yaw = cameraYawRef.current
 
-    // Forward/right vectors derived from current camera yaw
+    // Forward vector points in the direction the camera faces
+    // dir[1] = -1 for W (forward), +1 for S (backward)
+    // dir[0] = -1 for A (left),    +1 for D (right)
     const fwdX =  Math.sin(yaw)
     const fwdZ =  Math.cos(yaw)
     const rgtX =  Math.cos(yaw)
     const rgtZ = -Math.sin(yaw)
 
-    // dir[0] = strafe (A/D), dir[1] = forward/back (W/S)
-    const moveX = dir[0] * rgtX + dir[1] * fwdX
-    const moveZ = dir[0] * rgtZ + dir[1] * fwdZ
+    // Negate dir[1] so W = move forward (into the scene)
+    const moveX = dir[0] * rgtX - dir[1] * fwdX
+    const moveZ = dir[0] * rgtZ - dir[1] * fwdZ
 
     // Snap to dominant grid axis for tile-by-tile movement
     const nx = px + Math.round(moveX)
@@ -914,9 +920,13 @@ export default function App() {
           )}
 
           <div className="chat-input-row">
-            <input className="chat-input" value={message}
+            <input
+              className="chat-input"
+              value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
+              onFocus={() => { chatInputFocused.current = true }}
+              onBlur={() => { chatInputFocused.current = false }}
               placeholder={transcribing ? 'Transcribing...' : recording ? 'Recording...' : 'Respond...'}
               style={{ border: `1px solid ${recording ? '#ff4400' : (selectedChar.color || '#1a3a6a')}` }}
             />
