@@ -6,6 +6,34 @@ import World from './world/World'
 const API = '/api'
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
 
+// ── Tile map (mirrored from World.jsx for collision detection) ──────────────
+const COLLISION_MAP = [
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,1,1,1,0,1,1,1,0,1,1,1,0,2],
+  [2,0,1,1,1,0,1,1,1,0,1,1,1,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,1,1,1,0,1,1,1,0,1,1,1,0,2],
+  [2,0,1,1,1,0,1,1,1,0,1,1,1,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,0,2,2,2,2,2,2,2,2,2,0,0,2],
+  [2,0,0,2,0,0,0,0,0,0,0,2,0,0,2],
+  [2,0,0,2,0,0,0,0,0,0,0,2,0,0,2],
+  [2,0,0,2,2,2,3,2,3,2,2,2,0,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+]
+
+const isWalkable = (wx, wz) => {
+  const tx = Math.round(wx + 7.5)
+  const tz = Math.round(wz + 7.5)
+  if (tx < 0 || tx >= 15 || tz < 0 || tz >= 15) return false
+  const t = COLLISION_MAP[tz][tx]
+  return t === 0 || t === 3 // floor or door
+}
+
+// ── Character data ──────────────────────────────────────────────────────────
 const HOME_POSITIONS = {
   'KRANZ': [0,  0,  2],
   'ENG-1': [-4, 0, -1],
@@ -20,6 +48,25 @@ const CRISIS_POSITIONS = {
   'ENG-3': [0,  0,  1],
   'ENG-4': [-2, 0, -2],
   'ENG-5': [2,  0, -2],
+}
+
+const CHARACTER_ROLES = {
+  'KRANZ': { title: 'Flight Director',          color: '#ff6600', bio: 'Gene Kranz. In charge of everything. His word is final.' },
+  'ENG-1': { title: 'FIDO — Flight Dynamics',   color: '#4af',    bio: 'Tracks spacecraft trajectory and orbital mechanics.' },
+  'ENG-2': { title: 'GUIDO — Guidance',         color: '#88f',    bio: 'Monitors onboard guidance computer systems.' },
+  'ENG-3': { title: 'TELMU — Electrical',       color: '#4af0c0', bio: 'Monitors power and life support systems.' },
+  'ENG-4': { title: 'RETRO — Retrofire',        color: '#aaf',    bio: 'Calculates re-entry burn procedures.' },
+  'ENG-5': { title: 'DOC — Flight Surgeon',     color: '#ffa0a0', bio: 'Monitors crew health and vital signs.' },
+}
+
+// What the character says when you walk up to them
+const PROXIMITY_GREETINGS = {
+  'KRANZ': 'Someone just walked up to my console. State your business — fast.',
+  'ENG-1': 'Hey — you heading to Flight? I can give you a quick trajectory update.',
+  'ENG-2': 'I was just cross-checking the state vector. Something you need?',
+  'ENG-3': 'Not a great time — power margins are razor thin. What is it?',
+  'ENG-4': 'You have 30 seconds. I\'m working the burn window.',
+  'ENG-5': 'I\'m monitoring crew vitals. What can I do for you?',
 }
 
 const CHAR_COLORS = {
@@ -91,8 +138,13 @@ const INTRO_LINES = [
   "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
   "",
   "[ CLICK ANYWHERE TO ENTER ]",
+  "",
+  "WASD or D-PAD to move · Walk up to a character to talk",
 ]
 const INTRO_FULL = INTRO_LINES.join('\n')
+
+const PLAYER_START = [0, 0, 5]
+const PROXIMITY_DISTANCE = 1.9
 
 export default function App() {
   const [selectedChar,    setSelectedChar]    = useState(null)
@@ -114,16 +166,28 @@ export default function App() {
   const [sharedLog,       setSharedLog]       = useState([])
   const [telemetry,       setTelemetry]       = useState({ alt: 199340, vel: 1.53, co2: 2.5, temp: 21.0, batt: 29.5 })
   const [pendingDecision, setPendingDecision] = useState(null)
-  const [audioReady,      setAudioReady]      = useState(false)
   const [charPositions,   setCharPositions]   = useState({ ...HOME_POSITIONS })
   const [evalResult,      setEvalResult]      = useState(null)
   const [timelineBranch,  setTimelineBranch]  = useState('A')
+
+  // ── Player movement state ──────────────────────────────────────────────────
+  const [playerPos,       setPlayerPos]       = useState(PLAYER_START)
+  const [isPlayerMoving,  setIsPlayerMoving]  = useState(false)
+  const playerPosRef      = useRef(PLAYER_START)
+  const greetCooldownRef  = useRef({})   // { charKey: timestamp }
+  const movingTimerRef    = useRef(null)
+  const holdIntervalRef   = useRef(null) // for D-pad hold-to-move
+  const charPositionsRef  = useRef({ ...HOME_POSITIONS })
+  const selectedCharRef   = useRef(null)
+  const introPhaseRef     = useRef('typing')
+
+  introPhaseRef.current = introPhase
 
   const chatEndRef        = useRef(null)
   const alertRef          = useRef(isAlert)
   alertRef.current        = isAlert
   const audioCtxRef       = useRef(null)
-  const audioRef          = useRef(null)   // tracks currently playing TTS audio
+  const audioRef          = useRef(null)
   const mediaRecorderRef  = useRef(null)
   const chunksRef         = useRef([])
   const firedEventsRef    = useRef(new Set())
@@ -132,7 +196,12 @@ export default function App() {
   const touchStartXRef    = useRef(null)
   const broadcastTimerRef = useRef(null)
   const missionTimeRef    = useRef(0)
+  const orbitRef          = useRef(null)
   missionTimeRef.current  = missionTime
+
+  // keep charPositionsRef in sync
+  useEffect(() => { charPositionsRef.current = charPositions }, [charPositions])
+  useEffect(() => { selectedCharRef.current  = selectedChar  }, [selectedChar])
 
   const missionMet = () => 55.92 + missionTimeRef.current / 3600
 
@@ -170,7 +239,7 @@ export default function App() {
     return () => clearInterval(timer)
   }, [])
 
-  // ── Mission events ─────────────────────────────────────────────────────────
+  // ── Scripted events ────────────────────────────────────────────────────────
   useEffect(() => {
     if (introPhase !== 'done') return
     MISSION_EVENTS.forEach(ev => {
@@ -190,24 +259,108 @@ export default function App() {
       if (!crisisEventsRef.current.has(ev.id) && elapsed >= ev.at) {
         crisisEventsRef.current.add(ev.id)
         showBroadcast(ev.charKey, ev.text)
-        if (ev.evalTrigger) {
-          setTimeout(() => runEvaluation(ev.evalTrigger.type, ev.evalTrigger.params, ev.evalTrigger.label), 4000)
-        }
+        if (ev.evalTrigger) setTimeout(() => runEvaluation(ev.evalTrigger.type, ev.evalTrigger.params, ev.evalTrigger.label), 4000)
       }
     })
   }, [missionTime, isAlert])
 
-  const changeClockSpeed = useCallback((spd) => {
-    clockSpeedRef.current = spd
-    setClockSpeed(spd)
+  // ── WASD keyboard movement ─────────────────────────────────────────────────
+  useEffect(() => {
+    const DIRS = { w: [0,-1], s: [0,1], a: [-1,0], d: [1,0] }
+
+    const onKey = (e) => {
+      if (introPhaseRef.current !== 'done') return
+      if (['w','a','s','d'].includes(e.key.toLowerCase())) e.preventDefault()
+      const dir = DIRS[e.key.toLowerCase()]
+      if (dir) movePlayer(dir)
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // ── Core move function (shared by keyboard + D-pad) ────────────────────────
+  const movePlayer = useCallback((dir) => {
+    const [px, , pz] = playerPosRef.current
+    const nx = px + dir[0]
+    const nz = pz + dir[1]
+
+    if (!isWalkable(nx, nz)) return
+
+    // Block walking into a character
+    const blocked = Object.values(charPositionsRef.current).some(([cx, , cz]) =>
+      Math.abs(cx - nx) < 0.6 && Math.abs(cz - nz) < 0.6
+    )
+    if (blocked) return
+
+    const newPos = [nx, 0, nz]
+    playerPosRef.current = newPos
+    setPlayerPos(newPos)
+    setIsPlayerMoving(true)
+
+    // Update orbit camera target to follow player
+    if (orbitRef.current) {
+      orbitRef.current.target.set(nx, 0, nz)
+      orbitRef.current.update()
+    }
+
+    clearTimeout(movingTimerRef.current)
+    movingTimerRef.current = setTimeout(() => setIsPlayerMoving(false), 250)
+
+    checkProximity(nx, nz)
+  }, [])
+
+  // ── Proximity detection ────────────────────────────────────────────────────
+  const checkProximity = useCallback((px, pz) => {
+    const now = Date.now()
+    for (const [charKey, [cx, , cz]] of Object.entries(HOME_POSITIONS)) {
+      const dist = Math.sqrt((px - cx) ** 2 + (pz - cz) ** 2)
+      if (dist < PROXIMITY_DISTANCE) {
+        const lastGreet = greetCooldownRef.current[charKey] || 0
+        if (now - lastGreet < 12000) return // 12s cooldown per character
+        greetCooldownRef.current[charKey] = now
+
+        const char = { name: charKey, ...CHARACTER_ROLES[charKey] }
+        setSelectedChar(char)
+        selectedCharRef.current = char
+        setHistory([])
+        setMessage('')
+
+        // Auto-greet after brief delay so state settles
+        const greeting = PROXIMITY_GREETINGS[charKey] || 'Yes?'
+        setTimeout(() => {
+          triggerAutoGreet(char, greeting)
+        }, 350)
+        break
+      }
+    }
+  }, [])
+
+  const triggerAutoGreet = useCallback(async (char, greetingText) => {
+    // Show the greeting as if the character initiated it
+    const msgTime = missionTimeRef.current
+    const assistantMsg = { role: 'assistant', content: greetingText, time: msgTime }
+    setHistory([assistantMsg])
+    setSharedLog(prev => [...prev.slice(-11), { char: char.name, text: greetingText, time: msgTime }])
+    speakTTS(greetingText, char.name)
+  }, [])
+
+  // ── D-pad hold-to-move ─────────────────────────────────────────────────────
+  const startDpad = useCallback((dir) => {
+    movePlayer(dir)
+    holdIntervalRef.current = setInterval(() => movePlayer(dir), 180)
+  }, [movePlayer])
+
+  const stopDpad = useCallback(() => {
+    clearInterval(holdIntervalRef.current)
+    holdIntervalRef.current = null
+  }, [])
+
+  // ── Character movement ─────────────────────────────────────────────────────
   const moveCharacter = useCallback((charKey, crisis = false) => {
     setCharPositions(prev => ({
       ...prev,
-      [charKey]: crisis
-        ? (CRISIS_POSITIONS[charKey] ?? HOME_POSITIONS[charKey])
-        : HOME_POSITIONS[charKey],
+      [charKey]: crisis ? (CRISIS_POSITIONS[charKey] ?? HOME_POSITIONS[charKey]) : HOME_POSITIONS[charKey],
     }))
   }, [])
 
@@ -215,6 +368,7 @@ export default function App() {
     setCharPositions({ ...HOME_POSITIONS })
   }, [])
 
+  // ── Broadcast ──────────────────────────────────────────────────────────────
   const showBroadcast = useCallback((charKey, text) => {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
     setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
@@ -232,24 +386,15 @@ export default function App() {
       const res = await fetch(`${API}/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command_type: type,
-          params,
-          session_id: SESSION_ID,
-          mission_met: missionMet(),
-        }),
+        body: JSON.stringify({ command_type: type, params, session_id: SESSION_ID, mission_met: missionMet() }),
       })
       const data = await res.json()
       setEvalResult({ ...data, label, timestamp: missionTimeRef.current })
       if (data.timeline_state?.branch) setTimelineBranch(data.timeline_state.branch)
-
-      // Speak the outcome aloud using RETRO's voice for burn, TELMU for power/co2
       const evalChar = type === 'burn' ? 'ENG-4' : 'ENG-3'
       const shortOutcome = data.outcome?.split('.')[0] || ''
       if (shortOutcome) speakTTS(shortOutcome, evalChar)
-    } catch (e) {
-      console.error('Evaluate error:', e)
-    }
+    } catch (e) { console.error('Evaluate error:', e) }
   }, [])
 
   // ── Ambient audio ──────────────────────────────────────────────────────────
@@ -264,17 +409,13 @@ export default function App() {
       const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate)
       const data = buf.getChannelData(0)
       for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1
-      const noise = ctx.createBufferSource()
-      noise.buffer = buf; noise.loop = true
-      const noiseFilter = ctx.createBiquadFilter()
-      noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 350; noiseFilter.Q.value = 0.4
-      const noiseGain = ctx.createGain(); noiseGain.gain.value = 0.035
-      noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(ctx.destination)
-      noise.start()
+      const noise = ctx.createBufferSource(); noise.buffer = buf; noise.loop = true
+      const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 350; nf.Q.value = 0.4
+      const ng = ctx.createGain(); ng.gain.value = 0.035
+      noise.connect(nf); nf.connect(ng); ng.connect(ctx.destination); noise.start()
       const hum = ctx.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 60
-      const humGain = ctx.createGain(); humGain.gain.value = 0.005
-      hum.connect(humGain); humGain.connect(ctx.destination); hum.start()
-      setAudioReady(true)
+      const hg = ctx.createGain(); hg.gain.value = 0.005
+      hum.connect(hg); hg.connect(ctx.destination); hum.start()
     } catch {}
   }, [])
 
@@ -303,13 +444,9 @@ export default function App() {
     return `T+${h}:${m}:${s}`
   }
 
-  // ── TTS — calls backend edge-tts neural voices ────────────────────────────
+  // ── TTS ─────────────────────────────────────────────────────────────────────
   const stopAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ''
-      audioRef.current = null
-    }
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; audioRef.current = null }
     setTalkingChar(null)
   }
 
@@ -330,14 +467,11 @@ export default function App() {
       audioRef.current = audio
       await audio.play()
       audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setTalkingChar(null) }
-      audio.onerror = () => { setTalkingChar(null) }
-    } catch (e) {
-      console.error('TTS error:', e)
-      setTalkingChar(null)
-    }
+      audio.onerror = () => setTalkingChar(null)
+    } catch (e) { console.error('TTS error:', e); setTalkingChar(null) }
   }
 
-  // ── Voice input — MediaRecorder + Groq Whisper ────────────────────────────
+  // ── Voice input ────────────────────────────────────────────────────────────
   const startRecording = async () => {
     if (recording || transcribing) return
     try {
@@ -356,7 +490,6 @@ export default function App() {
           const data = await res.json()
           if (data.text?.trim()) {
             setMessage(data.text.trim())
-            // auto-send after short delay
             setTimeout(() => document.getElementById('send-btn')?.click(), 300)
           }
         } catch (e) { console.error('Transcribe error:', e) }
@@ -366,9 +499,7 @@ export default function App() {
       recorder.start()
       mediaRecorderRef.current = recorder
       setRecording(true)
-    } catch (e) {
-      alert('Microphone access denied.')
-    }
+    } catch { alert('Microphone access denied.') }
   }
 
   const stopRecording = () => {
@@ -377,7 +508,18 @@ export default function App() {
     setRecording(false)
   }
 
-  const handleSelect = (char) => { stopAudio(); setSelectedChar(char); setHistory([]); setMessage('') }
+  const handleSelect = (char) => {
+    stopAudio()
+    setSelectedChar(char)
+    selectedCharRef.current = char
+    setHistory([])
+    setMessage('')
+  }
+
+  const changeClockSpeed = useCallback((spd) => {
+    clockSpeedRef.current = spd
+    setClockSpeed(spd)
+  }, [])
 
   const handleCrisisToggle = () => {
     const next = !isAlert
@@ -419,8 +561,9 @@ export default function App() {
   }
 
   const sendMessage = async (overrideMsg) => {
+    const char = selectedCharRef.current || selectedChar
     const msg = overrideMsg || message
-    if (!msg.trim() || loading) return
+    if (!msg.trim() || loading || !char) return
     stopAudio()
     const msgTime = missionTimeRef.current
     const userMsg = { role: 'user', content: msg, time: msgTime }
@@ -434,7 +577,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          character: selectedChar.name,
+          character: char.name,
           message: msg,
           history: history.slice(-8).map(h => ({ role: h.role, content: h.content })),
           shared_context: sharedLog.slice(-4).map(e => ({ char: e.char, text: e.text })),
@@ -446,8 +589,8 @@ export default function App() {
       const reply = data.response
       const replyTime = missionTimeRef.current
       setHistory([...newHistory, { role: 'assistant', content: reply, time: replyTime }])
-      setSharedLog(prev => [...prev.slice(-11), { char: selectedChar.name, text: reply, time: replyTime }])
-      speakTTS(reply, selectedChar.name)
+      setSharedLog(prev => [...prev.slice(-11), { char: char.name, text: reply, time: replyTime }])
+      speakTTS(reply, char.name)
     } catch {
       setHistory([...newHistory, { role: 'assistant', content: '[COMMS FAILURE]', time: msgTime }])
     }
@@ -491,7 +634,7 @@ export default function App() {
     touchStartXRef.current = null
   }
 
-  const micStatus = recording ? 'RELEASE' : transcribing ? 'PROCESSING...' : '🎙 HOLD'
+  const micStatus = recording ? 'RELEASE' : transcribing ? '...' : '🎙'
 
   return (
     <div className="app-root" style={{ background: isAlert ? '#0d0000' : '#0a0a1a' }} onClick={handleGlobalClick}>
@@ -499,8 +642,21 @@ export default function App() {
         <ambientLight intensity={isAlert ? 0.2 : 0.4} />
         <directionalLight position={[10, 20, 10]} intensity={1} castShadow />
         <pointLight position={[0, 5, 0]} color={isAlert ? '#ff0000' : '#4466ff'} intensity={isAlert ? 1.5 : 0.3} />
-        <World isAlert={isAlert} onCharacterSelect={handleSelect} selectedChar={selectedChar} talkingChar={talkingChar} charPositions={charPositions} />
-        <OrbitControls maxPolarAngle={Math.PI / 2.8} minDistance={8} maxDistance={25} />
+        <World
+          isAlert={isAlert}
+          onCharacterSelect={handleSelect}
+          selectedChar={selectedChar}
+          talkingChar={talkingChar}
+          charPositions={charPositions}
+          playerPos={playerPos}
+          isPlayerMoving={isPlayerMoving}
+        />
+        <OrbitControls
+          ref={orbitRef}
+          maxPolarAngle={Math.PI / 2.8}
+          minDistance={8}
+          maxDistance={25}
+        />
       </Canvas>
 
       {/* INTRO */}
@@ -589,9 +745,7 @@ export default function App() {
             <span className="eval-label">{evalResult.label || 'PHYSICS EVALUATION'}</span>
             <button className="btn-close" onClick={() => setEvalResult(null)}>✕</button>
           </div>
-          <div className="eval-timeline" style={{ color: evalResult.viable ? '#4af0c0' : '#ff4400' }}>
-            {evalResult.timeline}
-          </div>
+          <div className="eval-timeline" style={{ color: evalResult.viable ? '#4af0c0' : '#ff4400' }}>{evalResult.timeline}</div>
           <div className="eval-outcome">{evalResult.outcome}</div>
           <div className="eval-physics">{evalResult.physics_note}</div>
           {evalResult.transcript_context?.[0] && (
@@ -642,7 +796,7 @@ export default function App() {
               <div className="chat-char-title">{selectedChar.title}</div>
             </div>
             <div className="chat-header-btns">
-              {talkingChar && <button className="btn-stop" onClick={stopAudio} title="Stop speaking">⏹</button>}
+              {talkingChar && <button className="btn-stop" onClick={stopAudio}>⏹</button>}
               <button className="btn-close" onClick={() => { stopAudio(); setSelectedChar(null) }}>✕</button>
             </div>
           </div>
@@ -650,7 +804,7 @@ export default function App() {
           <div className="chat-bio">{selectedChar.bio}</div>
 
           <div className="chat-history">
-            {history.length === 0 && <div className="chat-empty">— open comms —</div>}
+            {history.length === 0 && <div className="chat-empty">— walk up to talk —</div>}
             {history.map((h, i) => (
               <div key={i} className={`chat-bubble-wrap ${h.role}`}>
                 {h.time !== undefined && <div className="msg-time">{formatMissionTime(h.time)}</div>}
@@ -665,7 +819,7 @@ export default function App() {
             <div ref={chatEndRef} />
           </div>
 
-          {history.length === 0 && (
+          {history.length <= 1 && (
             <div className="quick-prompts">
               <div className="quick-label">QUICK COMMS</div>
               {(QUICK_PROMPTS[selectedChar.name] || []).map(q => (
@@ -678,7 +832,7 @@ export default function App() {
             <input className="chat-input" value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
-              placeholder={transcribing ? 'Transcribing...' : recording ? 'Recording...' : 'Type or hold mic...'}
+              placeholder={transcribing ? 'Transcribing...' : recording ? 'Recording...' : 'Respond...'}
               style={{ border: `1px solid ${recording ? '#ff4400' : (selectedChar.color || '#1a3a6a')}` }}
             />
             <button className="btn-mic"
@@ -691,8 +845,7 @@ export default function App() {
                 color: recording ? '#ff4400' : transcribing ? '#333' : '#6a6',
                 border: `1px solid ${recording ? '#ff4400' : '#1a4a1a'}`,
                 animation: recording ? 'pulse 1s infinite' : 'none',
-                fontSize: 12,
-                minWidth: 56,
+                fontSize: 12, minWidth: 40,
               }}>{micStatus}</button>
             <button id="send-btn" className="btn-send" onClick={() => sendMessage()} disabled={loading}
               style={{ background: loading ? '#111' : '#0f3460', color: loading ? '#333' : '#fff' }}>▶</button>
@@ -700,8 +853,27 @@ export default function App() {
         </div>
       )}
 
+      {/* D-PAD — for iPad */}
+      {introPhase === 'done' && (
+        <div className="dpad" onClick={e => e.stopPropagation()}>
+          <button className="dpad-btn dpad-up"
+            onPointerDown={e => { e.preventDefault(); startDpad([0,-1]) }}
+            onPointerUp={stopDpad} onPointerLeave={stopDpad}>▲</button>
+          <button className="dpad-btn dpad-left"
+            onPointerDown={e => { e.preventDefault(); startDpad([-1,0]) }}
+            onPointerUp={stopDpad} onPointerLeave={stopDpad}>◀</button>
+          <button className="dpad-btn dpad-center" />
+          <button className="dpad-btn dpad-right"
+            onPointerDown={e => { e.preventDefault(); startDpad([1,0]) }}
+            onPointerUp={stopDpad} onPointerLeave={stopDpad}>▶</button>
+          <button className="dpad-btn dpad-down"
+            onPointerDown={e => { e.preventDefault(); startDpad([0,1]) }}
+            onPointerUp={stopDpad} onPointerLeave={stopDpad}>▼</button>
+        </div>
+      )}
+
       {!selectedChar && introPhase === 'done' && (
-        <div className="bottom-hint">CLICK A CHARACTER · DRAG TO ROTATE · SCROLL TO ZOOM</div>
+        <div className="bottom-hint">WASD · D-PAD TO MOVE · WALK UP TO CHARACTERS TO TALK</div>
       )}
 
       <style>{`
@@ -709,7 +881,7 @@ export default function App() {
         .app-root { position: fixed; inset: 0; overflow: hidden; font-family: monospace; }
 
         .intro-overlay { position:absolute;inset:0;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;z-index:100;cursor:pointer; }
-        .intro-text { color:#4af0c0;font-family:monospace;font-size:clamp(12px,2.2vw,18px);line-height:1.8;white-space:pre;text-shadow:0 0 12px rgba(74,240,192,0.5);text-align:left;max-width:90vw; }
+        .intro-text { color:#4af0c0;font-family:monospace;font-size:clamp(11px,2vw,16px);line-height:1.9;white-space:pre;text-shadow:0 0 12px rgba(74,240,192,0.5);text-align:left;max-width:90vw; }
         .intro-cursor { animation:blink 0.7s step-end infinite; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
@@ -717,9 +889,8 @@ export default function App() {
         .topbar-title { font-size:clamp(9px,1.8vw,13px);letter-spacing:clamp(1px,0.3vw,2px);white-space:nowrap;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis; }
         .topbar-clock { color:#4af;font-size:clamp(9px,1.6vw,12px);letter-spacing:1px;white-space:nowrap;flex-shrink:0; }
         .topbar-actions { display:flex;gap:6px;align-items:center;flex-shrink:0; }
-        .speed-controls { display:flex;gap:3px;align-items:center; }
-        .speed-btn { background:transparent;border:1px solid #222;border-radius:3px;padding:3px 6px;font-family:monospace;font-size:clamp(9px,1.4vw,11px);cursor:pointer;transition:all 0.15s;white-space:nowrap; }
-        .speed-btn:hover { border-color:#4af;color:#4af; }
+        .speed-controls { display:flex;gap:3px; }
+        .speed-btn { background:transparent;border:1px solid #222;border-radius:3px;padding:3px 6px;font-family:monospace;font-size:clamp(9px,1.4vw,11px);cursor:pointer;transition:all 0.15s; }
         .timeline-badge { font-size:clamp(8px,1.3vw,10px);letter-spacing:1px;white-space:nowrap; }
         .export-btn { color:#4af;background:transparent;border:1px solid #1a3a6a;border-radius:4px;padding:4px clamp(6px,1vw,10px);font-family:monospace;font-size:clamp(9px,1.4vw,11px);cursor:pointer;white-space:nowrap; }
         .crisis-btn { color:#fff;border:none;border-radius:4px;padding:5px clamp(8px,1.5vw,14px);font-family:monospace;font-size:clamp(9px,1.5vw,11px);letter-spacing:1px;cursor:pointer;white-space:nowrap; }
@@ -737,13 +908,13 @@ export default function App() {
         .hud-bar-fill { height:100%;transition:width 0.5s,background 0.5s; }
         .hud-crew { color:#333;font-size:10px;margin-top:2px; }
 
-        .telemetry { position:absolute;bottom:12px;right:12px;font-size:clamp(9px,1.4vw,11px);display:flex;flex-direction:column;gap:5px;background:rgba(0,0,0,0.7);border-radius:6px;padding:8px 10px;width:clamp(130px,20vw,160px);z-index:10; }
+        .telemetry { position:absolute;bottom:140px;right:12px;font-size:clamp(9px,1.4vw,11px);display:flex;flex-direction:column;gap:5px;background:rgba(0,0,0,0.7);border-radius:6px;padding:8px 10px;width:clamp(130px,20vw,160px);z-index:10; }
         .telem-row { display:flex;justify-content:space-between;align-items:center; }
         .telem-label { color:#444;letter-spacing:1px; }
         .telem-val { color:#4af0c0;text-align:right; }
         .telem-unit { color:#333;font-size:9px; }
 
-        .eval-panel { position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:clamp(280px,70vw,520px);background:rgba(4,8,18,0.98);border:1px solid #4af0c0;border-radius:8px;padding:12px 14px;z-index:25;display:flex;flex-direction:column;gap:6px;animation:slideDown 0.3s ease; }
+        .eval-panel { position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:clamp(280px,60vw,500px);background:rgba(4,8,18,0.98);border:1px solid #4af0c0;border-radius:8px;padding:12px 14px;z-index:25;display:flex;flex-direction:column;gap:6px;animation:slideDown 0.3s ease; }
         .eval-header { display:flex;justify-content:space-between;align-items:center; }
         .eval-label { color:#666;font-size:10px;letter-spacing:1px; }
         .eval-timeline { font-size:clamp(10px,1.8vw,13px);font-weight:bold;letter-spacing:1px; }
@@ -758,9 +929,8 @@ export default function App() {
         .decision-q { color:#ccc;font-family:monospace;font-size:clamp(11px,2vw,14px);text-align:center;line-height:1.6; }
         .decision-opts { display:flex;flex-direction:column;gap:10px;width:100%; }
         .decision-btn { background:rgba(10,10,30,0.9);color:#fff;border:1px solid #ff8800;border-radius:6px;padding:10px 16px;font-family:monospace;font-size:clamp(11px,1.8vw,13px);cursor:pointer;letter-spacing:1px;transition:background 0.2s; }
-        .decision-btn:hover { background:rgba(40,20,5,0.9); }
 
-        .chat-panel { position:absolute;bottom:12px;left:12px;width:clamp(260px,88vw,340px);max-height:calc(100vh - 68px);background:rgba(5,5,20,0.97);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;transition:border-color 0.3s,box-shadow 0.3s;z-index:20;touch-action:pan-y; }
+        .chat-panel { position:absolute;bottom:12px;left:12px;width:clamp(260px,42vw,340px);max-height:calc(100vh - 68px);background:rgba(5,5,20,0.97);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;transition:border-color 0.3s,box-shadow 0.3s;z-index:20;touch-action:pan-y; }
         .chat-header { display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0; }
         .chat-char-name-row { display:flex;align-items:center;gap:8px; }
         .chat-char-name { font-size:clamp(12px,2vw,15px);font-weight:bold; }
@@ -770,7 +940,7 @@ export default function App() {
         .btn-stop { background:#1a0a00;color:#ff8800;border:1px solid #ff8800;border-radius:4px;padding:2px 7px;font-family:monospace;font-size:10px;cursor:pointer; }
         .btn-close { background:transparent;color:#444;border:1px solid #222;border-radius:4px;padding:2px 7px;font-family:monospace;font-size:11px;cursor:pointer; }
         .chat-bio { color:#555;font-size:clamp(10px,1.5vw,11px);line-height:1.5;border-bottom:1px solid #111;padding-bottom:8px;flex-shrink:0; }
-        .chat-history { flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:48px;max-height:32vh; }
+        .chat-history { flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:48px;max-height:28vh; }
         .chat-empty { color:#333;font-size:11px;text-align:center;margin-top:8px; }
         .chat-bubble-wrap { display:flex;flex-direction:column;gap:2px; }
         .chat-bubble-wrap.user { align-items:flex-end; }
@@ -783,14 +953,47 @@ export default function App() {
         .quick-btn { background:#0a0f1a;color:#4a8aaa;border:1px solid #1a2a3a;border-radius:4px;padding:5px 8px;font-family:monospace;font-size:clamp(10px,1.6vw,11px);cursor:pointer;text-align:left; }
         .chat-input-row { display:flex;gap:5px;flex-shrink:0; }
         .chat-input { flex:1;background:#0a0a1a;border-radius:4px;padding:7px 9px;color:#ddd;font-family:monospace;font-size:clamp(11px,1.8vw,12px);outline:none;transition:border-color 0.2s;min-width:0; }
-        .btn-mic { border-radius:4px;padding:7px 6px;font-family:monospace;cursor:pointer;flex-shrink:0;user-select:none;letter-spacing:0.5px;transition:all 0.1s; }
+        .btn-mic { border-radius:4px;padding:7px 6px;font-family:monospace;cursor:pointer;flex-shrink:0;user-select:none;transition:all 0.1s; }
         .btn-send { border:none;border-radius:4px;padding:7px 11px;font-family:monospace;font-size:12px;cursor:pointer;flex-shrink:0; }
         .btn-send:disabled { cursor:default; }
 
-        .bottom-hint { position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:#1e1e2e;font-family:monospace;font-size:clamp(8px,1.4vw,11px);letter-spacing:1px;pointer-events:none;white-space:nowrap;z-index:5; }
+        /* D-PAD */
+        .dpad {
+          position: absolute;
+          bottom: 24px;
+          right: 24px;
+          display: grid;
+          grid-template-areas: ". up ." "left center right" ". down .";
+          grid-template-columns: 48px 48px 48px;
+          grid-template-rows: 48px 48px 48px;
+          gap: 4px;
+          z-index: 15;
+        }
+        .dpad-btn {
+          background: rgba(0,0,10,0.75);
+          border: 1px solid #1a3a6a;
+          border-radius: 8px;
+          color: #4af;
+          font-size: 18px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          user-select: none;
+          touch-action: none;
+          transition: background 0.1s, border-color 0.1s;
+        }
+        .dpad-btn:active { background: rgba(26,58,106,0.85); border-color: #4af; }
+        .dpad-up     { grid-area: up; }
+        .dpad-left   { grid-area: left; }
+        .dpad-center { grid-area: center; background: transparent; border-color: transparent; pointer-events: none; }
+        .dpad-right  { grid-area: right; }
+        .dpad-down   { grid-area: down; }
+
+        .bottom-hint { position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:#1e1e2e;font-family:monospace;font-size:clamp(8px,1.4vw,10px);letter-spacing:1px;pointer-events:none;white-space:nowrap;z-index:5; }
 
         @media (max-width: 480px) {
-          .chat-panel { left:8px;right:8px;width:auto;bottom:8px; }
+          .chat-panel { left:8px;right:8px;width:auto;bottom:8px;max-height:50vh; }
           .hud { display:none; }
           .telemetry { display:none; }
           .topbar-title { display:none; }
@@ -798,11 +1001,8 @@ export default function App() {
           .broadcast { width:96vw; }
           .eval-panel { width:96vw;left:2vw;transform:none; }
           .timeline-badge { display:none; }
-        }
-        @media (max-width: 768px) and (min-width: 481px) {
-          .chat-panel { width:clamp(260px,50vw,340px); }
-          .hud { width:clamp(120px,18vw,150px);font-size:10px; }
-          .telemetry { width:clamp(120px,18vw,150px);font-size:10px; }
+          .dpad { bottom:16px;right:16px; }
+          .dpad-btn { width:44px;height:44px;font-size:16px; }
         }
 
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
