@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useLayoutEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 
@@ -31,6 +31,14 @@ export default function Character({
 
   // Current interpolated position (starts at target)
   const currentPos = useRef([...position])
+
+  // Set initial 3D position once — useFrame owns it after this
+  useLayoutEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.position.set(position[0], 0, position[2])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useFrame((state) => {
     const t    = state.clock.getElapsedTime()
@@ -99,7 +107,6 @@ export default function Character({
   return (
     <group
       ref={groupRef}
-      position={position}
       onClick={(e) => { e.stopPropagation(); onSelect({ name, ...role }) }}
     >
       {/* Click hitbox */}

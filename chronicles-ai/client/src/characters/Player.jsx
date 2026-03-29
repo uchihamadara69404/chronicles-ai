@@ -1,25 +1,33 @@
-import { useRef } from 'react'
+import { useRef, useLayoutEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 
-const LERP     = 0.18   // position lerp — snappy but smooth
-const ROT_LERP = 0.22   // facing direction lerp
+const LERP     = 0.12   // glide speed — lower = more floaty, higher = snappier
+const ROT_LERP = 0.18
 
 export default function Player({ position, isMoving }) {
-  const groupRef   = useRef()
-  const bodyRef    = useRef()
-  const headRef    = useRef()
-  const leftLegRef = useRef()
-  const rightLegRef= useRef()
-  const currentPos = useRef([...position])
-  const targetRotY = useRef(0)
+  const groupRef    = useRef()
+  const bodyRef     = useRef()
+  const headRef     = useRef()
+  const leftLegRef  = useRef()
+  const rightLegRef = useRef()
+  const currentPos  = useRef([...position])
+  const targetRotY  = useRef(0)
+
+  // Set initial 3D position once on mount so the character doesn't flash at origin.
+  // After this, useFrame owns group.position entirely — no reactive JSX prop.
+  useLayoutEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.position.set(position[0], 0, position[2])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime()
-
     if (!groupRef.current) return
 
-    // ── Smooth position lerp ────────────────────────────────────────────
+    // ── Glide toward logical grid target ────────────────────────────────
     const [cx, , cz] = currentPos.current
     const [tx, , tz] = position
 
@@ -29,15 +37,14 @@ export default function Player({ position, isMoving }) {
     const nz = cz + dz * LERP
     currentPos.current = [nx, 0, nz]
 
+    // Write position — NOT via JSX prop so React/R3F won't snap it
     groupRef.current.position.x = nx
     groupRef.current.position.z = nz
 
-    // ── Facing direction: rotate to match movement vector ───────────────
-    if (Math.abs(dx) + Math.abs(dz) > 0.01) {
+    // ── Facing direction ────────────────────────────────────────────────
+    if (Math.abs(dx) + Math.abs(dz) > 0.008) {
       targetRotY.current = Math.atan2(dx, dz)
     }
-
-    // Shortest-path rotation lerp
     let rotDiff = targetRotY.current - groupRef.current.rotation.y
     while (rotDiff >  Math.PI) rotDiff -= 2 * Math.PI
     while (rotDiff < -Math.PI) rotDiff += 2 * Math.PI
@@ -45,37 +52,31 @@ export default function Player({ position, isMoving }) {
 
     // ── Body bob ────────────────────────────────────────────────────────
     if (bodyRef.current) {
-      const dist = Math.abs(dx) + Math.abs(dz)
-      const amp  = dist > 0.05 ? 0.055 : 0.025
-      const spd  = dist > 0.05 ? 10 : 2
-      bodyRef.current.position.y = 0.6 + Math.sin(t * spd) * amp
+      const moving = Math.abs(dx) + Math.abs(dz) > 0.02
+      bodyRef.current.position.y = 0.6 + Math.sin(t * (moving ? 10 : 2)) * (moving ? 0.05 : 0.02)
     }
 
-    // ── Head idle sway ──────────────────────────────────────────────────
+    // ── Head idle ───────────────────────────────────────────────────────
     if (headRef.current) {
       headRef.current.rotation.y = isMoving
-        ? Math.sin(t * 7) * 0.08
-        : Math.sin(t * 0.6) * 0.12
+        ? Math.sin(t * 7) * 0.07
+        : Math.sin(t * 0.6) * 0.10
     }
 
-    // ── Alternating leg animation (Pokémon walk cycle) ──────────────────
+    // ── Alternating leg swing ────────────────────────────────────────────
     if (leftLegRef.current && rightLegRef.current) {
-      const dist = Math.abs(dx) + Math.abs(dz)
-      const walking = dist > 0.05
-
-      const swing = walking ? Math.sin(t * 10) * 0.28 : 0
-      const liftL = walking ? Math.max(0, Math.sin(t * 10)) * 0.06 : 0
-      const liftR = walking ? Math.max(0, Math.sin(t * 10 + Math.PI)) * 0.06 : 0
-
-      leftLegRef.current.rotation.x  =  swing
-      rightLegRef.current.rotation.x = -swing
-      leftLegRef.current.position.y  = 0.28 + liftL
-      rightLegRef.current.position.y = 0.28 + liftR
+      const moving = Math.abs(dx) + Math.abs(dz) > 0.02
+      const swing  = moving ? Math.sin(t * 10) * 0.3 : 0
+      leftLegRef.current.rotation.x   =  swing
+      rightLegRef.current.rotation.x  = -swing
+      leftLegRef.current.position.y   = 0.28 + (moving ? Math.max(0, Math.sin(t * 10)) * 0.05 : 0)
+      rightLegRef.current.position.y  = 0.28 + (moving ? Math.max(0, Math.sin(t * 10 + Math.PI)) * 0.05 : 0)
     }
   })
 
   return (
-    <group ref={groupRef} position={position}>
+    // No position prop — useFrame drives it exclusively to avoid R3F snapping
+    <group ref={groupRef}>
       {/* Cyan glow ring */}
       <mesh position={[0, 0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.3, 0.48, 24]} />
@@ -105,12 +106,10 @@ export default function Player({ position, isMoving }) {
         <boxGeometry args={[0.3, 0.04, 0.04]} />
         <meshLambertMaterial color="#111133" />
       </mesh>
-      {/* Headset left */}
       <mesh position={[-0.14, 0.97, 0]}>
         <boxGeometry args={[0.05, 0.1, 0.05]} />
         <meshLambertMaterial color="#111133" />
       </mesh>
-      {/* Headset right */}
       <mesh position={[0.14, 0.97, 0]}>
         <boxGeometry args={[0.05, 0.1, 0.05]} />
         <meshLambertMaterial color="#111133" />

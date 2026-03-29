@@ -278,19 +278,40 @@ export default function App() {
     })
   }, [missionTime, isAlert])
 
-  // ── WASD keyboard movement ─────────────────────────────────────────────────
+  // ── WASD keyboard movement (own timed repeat — same feel as D-pad) ───────────
   useEffect(() => {
-    const DIRS = { w: [0,-1], s: [0,1], a: [-1,0], d: [1,0] }
+    const DIRS = { w: [0,-1], s: [0,1], a: [-1,0], d: [1,0],
+                   arrowup: [0,-1], arrowdown: [0,1], arrowleft: [-1,0], arrowright: [1,0] }
+    const kbIntervalRef = { current: null }
 
-    const onKey = (e) => {
+    const onKeyDown = (e) => {
       if (introPhaseRef.current !== 'done') return
-      if (['w','a','s','d'].includes(e.key.toLowerCase())) e.preventDefault()
-      const dir = DIRS[e.key.toLowerCase()]
-      if (dir) movePlayer(dir)
+      const key = e.key.toLowerCase()
+      if (Object.keys(DIRS).includes(key)) e.preventDefault()
+      // Ignore OS key-repeat — we handle our own repeat below
+      if (e.repeat) return
+      const dir = DIRS[key]
+      if (!dir) return
+      clearInterval(kbIntervalRef.current)
+      movePlayer(dir)
+      kbIntervalRef.current = setInterval(() => movePlayer(dir), 170)
     }
 
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    const onKeyUp = (e) => {
+      const key = e.key.toLowerCase()
+      if (DIRS[key]) {
+        clearInterval(kbIntervalRef.current)
+        kbIntervalRef.current = null
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup',   onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup',   onKeyUp)
+      clearInterval(kbIntervalRef.current)
+    }
   }, [])
 
   // ── Core move function (shared by keyboard + D-pad) ────────────────────────
