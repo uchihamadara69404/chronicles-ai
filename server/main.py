@@ -1,8 +1,6 @@
 import os
 import sys
 import io
-import uuid
-import asyncio
 import tempfile
 import edge_tts
 
@@ -145,6 +143,7 @@ class ChatRequest(BaseModel):
     shared_context: list = []
     session_id: str = ""
     mission_met: float = 55.92
+    mission_state: dict = {}   # ← NEW
 
 class EvaluateRequest(BaseModel):
     command_type: str
@@ -156,7 +155,6 @@ class TTSRequest(BaseModel):
     character: str
     text: str
 
-# ── NEW: Transcription endpoint ─────────────────────────────────────────────
 @app.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
@@ -175,24 +173,52 @@ async def chat(req: ChatRequest):
     if not char:
         return {"response": "Unknown character."}
 
+    # Full room log — 20 entries so characters remember everything recent
     shared_ctx_text = ""
     if req.shared_context:
-        lines = [f"  [{item['char']}]: {item['text']}" for item in req.shared_context[-4:]]
-        shared_ctx_text = "\n\nRECENT MISSION EXCHANGES (other stations):\n" + "\n".join(lines)
+        lines = [f"  [{item['char']}]: {item['text']}" for item in req.shared_context[-20:]]
+        shared_ctx_text = "\n\nFULL ROOM COMMS LOG (everything said in this room recently):\n" + "\n".join(lines)
 
+    # Mission state — completed actions are facts, never re-suggest them
+    mission_state_text = ""
+    if req.mission_state:
+        ms = req.mission_state
+        facts = []
+        if ms.get("powerReduced"):
+            facts.append("✓ Non-essentials powered down. Load shed to 12A. Do NOT suggest this again.")
+        if ms.get("co2Fixed"):
+            facts.append("✓ CO2 mailbox scrubber fix implemented and working. CO2 is under control.")
+        if ms.get("burnExecuted"):
+            facts.append(f"✓ PC+2 burn executed — {ms.get('burnDv', 30.7)} m/s at T+{ms.get('burnMet', 79.46):.2f}h. Crew on return trajectory.")
+        if ms.get("emergencyDeclared"):
+            facts.append("✓ Emergency declared. All stations on contingency footing.")
+        if ms.get("lemActivated"):
+            facts.append("✓ Lunar Module Aquarius activated as lifeboat.")
+        if ms.get("navigationTransferred"):
+            facts.append("✓ Navigation transferred to LEM guidance computer.")
+        if ms.get("freeReturn"):
+            facts.append("✓ Free-return trajectory confirmed. No further burns required.")
+        if facts:
+            mission_state_text = "\n\nCOMPLETED MISSION ACTIONS — these are confirmed facts. Do NOT re-suggest them:\n" + "\n".join(facts)
+        if ms.get("pendingDirectives"):
+            directives = [d["text"] for d in ms["pendingDirectives"][-5:]]
+            mission_state_text += "\n\nPENDING DIRECTIVES FROM FLIGHT DIRECTOR:\n" + "\n".join(f"  → {d}" for d in directives)
+
+    # Actual NASA transcript context
     transcript_entries = get_transcript_context(req.mission_met, n=2)
     transcript_text = "\n\nACTUAL TRANSCRIPT AT THIS MISSION TIME:\n" + "\n".join(
         f'  [T+{e["met"]:.2f}h] {e["speaker"]}: "{e["line"]}" — {e["note"]}'
         for e in transcript_entries
     )
 
+    # Timeline state
     timeline = TIMELINE_STATES.get(req.session_id, {})
     timeline_text = ""
     if timeline:
         branch = timeline.get("branch", "A")
         timeline_text = f"\n\nCURRENT MISSION TIMELINE: {TIMELINE_DESCRIPTIONS.get(branch, branch)}"
         if branch != "A":
-            timeline_text += "\nIMPORTANT: You know the outcome of the decisions made. React accordingly — be honest about what went wrong."
+            timeline_text += "\nIMPORTANT: React to the consequences of bad decisions honestly."
 
     system_prompt = f"""You are {char['name']}, {char['role']}.
 
@@ -201,15 +227,15 @@ async def chat(req: ChatRequest):
 CURRENT SITUATION:
 {SCENARIO_CONTEXT}
 
-RULES:
-- Stay completely in character at all times.
-- Keep responses to 2-3 sentences maximum. This is a crisis — nobody has time for speeches.
-- Speak naturally, like a real human being under pressure — not like a textbook.
-- Use contractions. Use incomplete sentences when appropriate. Think out loud if it fits your character.
-- Never say you are an AI. Never break character.
-- If asked something outside your expertise, redirect to what you DO know.
-- When referencing numbers or data, use the actual values from the transcript context below.
-- If shared context shows what other stations said, you may reference it naturally.{transcript_text}{timeline_text}{shared_ctx_text}"""
+CRITICAL RULES:
+- You share a room with all other controllers. You HAVE heard everything in the comms log.
+- If an action is listed as COMPLETED, it is done — never suggest doing it again.
+- If a directive is PENDING, acknowledge it and report your status on it.
+- Keep responses 2-3 sentences maximum. This is a crisis.
+- Speak naturally under pressure. Use contractions, incomplete sentences if appropriate.
+- Never break character. Never mention AI.
+- Reference real numbers from the transcript context.
+- If another controller gave data in the comms log, you already know that data.{transcript_text}{mission_state_text}{timeline_text}{shared_ctx_text}"""
 
     messages = []
     for h in req.history[-8:]:
@@ -220,7 +246,7 @@ RULES:
         model="llama-3.3-70b-versatile",
         messages=[{"role": "system", "content": system_prompt}] + messages,
         max_tokens=180,
-        temperature=0.9,
+        temperature=0.85,
     )
 
     return {"response": response.choices[0].message.content}
