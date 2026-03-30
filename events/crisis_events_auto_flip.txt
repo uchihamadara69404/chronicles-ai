@@ -1,0 +1,1 @@
+Fix 3 - Crisis events now auto-flip missionState correctly.

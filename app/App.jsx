@@ -1,0 +1,1 @@
+Fix 6 - Implemented proactive character prompts with stateUpdate handlers in CRISIS_EVENTS array and PROACTIVE_PROMPTS firing logic.
