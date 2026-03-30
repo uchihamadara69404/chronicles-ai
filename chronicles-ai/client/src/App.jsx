@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import World from './world/World'
 
-// ── FPS Camera — position follows player, look direction = mouse/touch drag ──
+// ── FPS Camera ───────────────────────────────────────────────────────────────
 function FirstPersonCamera({ playerPos, yawRef }) {
   const smooth  = useRef({ x: playerPos[0], z: playerPos[2] })
   const pitch   = useRef(0)
@@ -11,25 +11,19 @@ function FirstPersonCamera({ playerPos, yawRef }) {
 
   useEffect(() => {
     const SENSITIVITY = 0.004
-
-    const onMouseDown = (e) => {
-      isDrag.current  = true
-      lastPos.current = { x: e.clientX, y: e.clientY }
-    }
+    const onMouseDown = (e) => { isDrag.current = true; lastPos.current = { x: e.clientX, y: e.clientY } }
     const onMouseMove = (e) => {
       if (!isDrag.current) return
       const dx = e.clientX - lastPos.current.x
       const dy = e.clientY - lastPos.current.y
       lastPos.current = { x: e.clientX, y: e.clientY }
-      yawRef.current  -= dx * SENSITIVITY
-      pitch.current   -= dy * SENSITIVITY
-      pitch.current    = Math.max(-0.6, Math.min(0.6, pitch.current))
+      yawRef.current -= dx * SENSITIVITY
+      pitch.current = Math.max(-0.6, Math.min(0.6, pitch.current - dy * SENSITIVITY))
     }
     const onMouseUp = () => { isDrag.current = false }
-
     const onTouchStart = (e) => {
-      if (e.target.closest('.chat-panel, .dpad, .topbar, .hud, .telemetry, .broadcast, .decision-overlay, .eval-panel')) return
-      isDrag.current  = true
+      if (e.target.closest('.chat-panel,.dpad,.topbar,.hud,.telemetry,.broadcast,.decision-overlay,.eval-panel')) return
+      isDrag.current = true
       lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     }
     const onTouchMove = (e) => {
@@ -37,19 +31,16 @@ function FirstPersonCamera({ playerPos, yawRef }) {
       const dx = e.touches[0].clientX - lastPos.current.x
       const dy = e.touches[0].clientY - lastPos.current.y
       lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-      yawRef.current  -= dx * SENSITIVITY
-      pitch.current   -= dy * SENSITIVITY
-      pitch.current    = Math.max(-0.6, Math.min(0.6, pitch.current))
+      yawRef.current -= dx * SENSITIVITY
+      pitch.current = Math.max(-0.6, Math.min(0.6, pitch.current - dy * SENSITIVITY))
     }
     const onTouchEnd = () => { isDrag.current = false }
-
     window.addEventListener('mousedown',  onMouseDown)
     window.addEventListener('mousemove',  onMouseMove)
     window.addEventListener('mouseup',    onMouseUp)
     window.addEventListener('touchstart', onTouchStart, { passive: true })
     window.addEventListener('touchmove',  onTouchMove,  { passive: true })
     window.addEventListener('touchend',   onTouchEnd)
-
     return () => {
       window.removeEventListener('mousedown',  onMouseDown)
       window.removeEventListener('mousemove',  onMouseMove)
@@ -64,12 +55,10 @@ function FirstPersonCamera({ playerPos, yawRef }) {
     const [tx, , tz] = playerPos
     smooth.current.x += (tx - smooth.current.x) * 0.18
     smooth.current.z += (tz - smooth.current.z) * 0.18
-
     const EYE_Y = 1.75
     camera.position.set(smooth.current.x, EYE_Y, smooth.current.z)
-
     const lookX = smooth.current.x + Math.sin(yawRef.current) * Math.cos(pitch.current)
-    const lookY = EYE_Y            + Math.sin(pitch.current)
+    const lookY = EYE_Y + Math.sin(pitch.current)
     const lookZ = smooth.current.z + Math.cos(yawRef.current) * Math.cos(pitch.current)
     camera.lookAt(lookX, lookY, lookZ)
   })
@@ -80,26 +69,25 @@ function FirstPersonCamera({ playerPos, yawRef }) {
 const API = '/api'
 const SESSION_ID = Math.random().toString(36).slice(2, 10)
 
-// ── Collision map — 1=solid, 2=wall, 0/4=walkable ──────────────────────
 const COLLISION_MAP = [
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 0
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 1
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 2
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 3
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 4  front consoles
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 5  aisle
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 6  back consoles
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2], // row 7
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 8  aisle
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 9
-  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 10
-  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 11 platform
-  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2], // row 12 platform
-  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2], // row 13
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 14
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 15
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2], // row 16
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2], // row 17
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2],
+  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2],
+  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2],
+  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2],
+  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
+  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
 ]
 
 const isWalkable = (wx, wz) => {
@@ -110,7 +98,6 @@ const isWalkable = (wx, wz) => {
   return t === 0 || t === 4
 }
 
-// ── Character data ──────────────────────────────────────────────────────────
 const HOME_POSITIONS = {
   'KRANZ': [0,  0,  3],
   'ENG-1': [-4, 0, -1],
@@ -137,12 +124,12 @@ const CHARACTER_ROLES = {
 }
 
 const PROXIMITY_GREETINGS = {
-  'KRANZ': 'Someone just walked up to my console. State your business — fast.',
-  'ENG-1': 'Hey — you heading to Flight? I can give you a quick trajectory update.',
-  'ENG-2': 'I was just cross-checking the state vector. Something you need?',
-  'ENG-3': 'Not a great time — power margins are razor thin. What is it?',
-  'ENG-4': 'You have 30 seconds. I\'m working the burn window.',
-  'ENG-5': 'I\'m monitoring crew vitals. What can I do for you?',
+  'KRANZ': "Someone just walked up to my console. State your business — fast.",
+  'ENG-1': "Hey — you heading to Flight? I can give you a quick trajectory update.",
+  'ENG-2': "I was just cross-checking the state vector. Something you need?",
+  'ENG-3': "Not a great time — power margins are razor thin. What is it?",
+  'ENG-4': "You have 30 seconds. I'm working the burn window.",
+  'ENG-5': "I'm monitoring crew vitals. What can I do for you?",
 }
 
 const CHAR_COLORS = {
@@ -153,6 +140,8 @@ const CHAR_LABELS = {
   'KRANZ': 'KRANZ', 'ENG-1': 'FIDO', 'ENG-2': 'GUIDO',
   'ENG-3': 'TELMU', 'ENG-4': 'RETRO', 'ENG-5': 'DOC',
 }
+
+const CHAR_MAP = { FIDO: 'ENG-1', GUIDO: 'ENG-2', TELMU: 'ENG-3', RETRO: 'ENG-4', DOC: 'ENG-5' }
 
 const QUICK_PROMPTS = {
   'KRANZ':  ["What's the situation?", "Can we save the crew?", "What are our options?"],
@@ -219,10 +208,20 @@ const INTRO_LINES = [
 ]
 const INTRO_FULL = INTRO_LINES.join('\n')
 
-const PLAYER_START = [0, 0, 5]
-const PROXIMITY_DISTANCE = 1.9
-// Units per frame at 60fps — smooth continuous glide, no grid snapping
-const MOVE_SPEED = 0.06
+const PLAYER_START   = [0, 0, 5]
+const PROXIMITY_DIST = 1.9
+const MOVE_SPEED     = 0.06
+
+const EMPTY_MISSION_STATE = {
+  powerReduced: false,
+  co2Fixed: false,
+  burnExecuted: false,
+  emergencyDeclared: false,
+  lemActivated: false,
+  navigationTransferred: false,
+  freeReturn: false,
+  pendingDirectives: [],  // [{ id, text }]
+}
 
 export default function App() {
   const [selectedChar,    setSelectedChar]    = useState(null)
@@ -248,8 +247,8 @@ export default function App() {
   const [evalResult,      setEvalResult]      = useState(null)
   const [timelineBranch,  setTimelineBranch]  = useState('A')
   const [lastBroadcast,   setLastBroadcast]   = useState(null)
+  const [missionState,    setMissionState]    = useState({ ...EMPTY_MISSION_STATE })
 
-  // ── Player position ────────────────────────────────────────────────────
   const [playerPos,       setPlayerPos]       = useState(PLAYER_START)
   const [isPlayerMoving,  setIsPlayerMoving]  = useState(false)
   const playerPosRef      = useRef(PLAYER_START)
@@ -259,13 +258,12 @@ export default function App() {
   const selectedCharRef   = useRef(null)
   const introPhaseRef     = useRef('typing')
   const chatInputFocused  = useRef(false)
-
-  // ── RAF-based input tracking ─────────────────────────────────────────────
-  // activeKeys: set of currently held direction keys/dpad
-  // dpadDir: active dpad direction vector or null
   const activeKeysRef     = useRef(new Set())
   const dpadDirRef        = useRef(null)
   const rafRef            = useRef(null)
+  const missionStateRef   = useRef({ ...EMPTY_MISSION_STATE })
+  const sharedLogRef      = useRef([])
+  const relayInFlightRef  = useRef(new Set())
 
   introPhaseRef.current = introPhase
 
@@ -285,14 +283,17 @@ export default function App() {
   const cameraYawRef      = useRef(Math.PI)
   missionTimeRef.current  = missionTime
 
+  // Keep refs in sync
   useEffect(() => { charPositionsRef.current = charPositions }, [charPositions])
   useEffect(() => { selectedCharRef.current  = selectedChar  }, [selectedChar])
+  useEffect(() => { missionStateRef.current  = missionState  }, [missionState])
+  useEffect(() => { sharedLogRef.current     = sharedLog     }, [sharedLog])
 
   const missionMet = () => 55.92 + missionTimeRef.current / 3600
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [history])
 
-  // ── Intro typewriter ──────────────────────────────────────────────────
+  // ── Intro typewriter ───────────────────────────────────────────────────────
   useEffect(() => {
     if (introPhase !== 'typing') return
     let i = 0
@@ -349,31 +350,125 @@ export default function App() {
     })
   }, [missionTime, isAlert])
 
-  // ── Core move step — called from RAF loop ────────────────────────────────
+  // ── Action detection — synchronous, returns nextState immediately ──────────
+  const detectAndApplyActions = useCallback((text, speaker, currentState) => {
+    const t = text.toLowerCase()
+    const updates = { ...currentState }
+    let changed = false
+
+    if (!updates.powerReduced &&
+        (t.includes('12 amp') || t.includes('shed load') ||
+         (t.includes('non-essential') && (t.includes('down') || t.includes('cut') || t.includes('shed') || t.includes('off'))))) {
+      updates.powerReduced = true; changed = true
+    }
+    if (!updates.co2Fixed &&
+        t.includes('co2') && (t.includes('fix') || t.includes('mailbox') || t.includes('working') || t.includes('done'))) {
+      updates.co2Fixed = true; changed = true
+    }
+    if (!updates.burnExecuted &&
+        (t.includes('pc+2') || t.includes('burn')) &&
+        (t.includes('execut') || t.includes('complet') || t.includes('done') || t.includes('fired'))) {
+      updates.burnExecuted = true; changed = true
+    }
+    if (!updates.emergencyDeclared &&
+        t.includes('emergency') && (t.includes('declar') || t.includes('contingency'))) {
+      updates.emergencyDeclared = true; changed = true
+    }
+    if (!updates.lemActivated &&
+        (t.includes('lunar module') || t.includes('aquarius')) &&
+        (t.includes('activ') || t.includes('lifeboat') || t.includes('transfer'))) {
+      updates.lemActivated = true; changed = true
+    }
+    if (!updates.navigationTransferred &&
+        t.includes('navigation') && t.includes('transfer')) {
+      updates.navigationTransferred = true; changed = true
+    }
+    if (!updates.freeReturn &&
+        (t.includes('free-return') || (t.includes('free') && t.includes('return')))) {
+      updates.freeReturn = true; changed = true
+    }
+
+    // Detect Kranz directives to engineers — use unique IDs to prevent duplicates
+    if (speaker === 'KRANZ' || speaker === 'GROUND') {
+      const dirMatch = text.match(/(FIDO|GUIDO|TELMU|RETRO|DOC)[,\s]+([^.!?\n]{10,80})/i)
+      if (dirMatch) {
+        const dirText = `Kranz to ${dirMatch[1].toUpperCase()}: "${dirMatch[2].trim()}"`
+        const dirId   = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        const existing = updates.pendingDirectives || []
+        const isDup = existing.slice(-3).some(d => d.text.slice(0, 30) === dirText.slice(0, 30))
+        if (!isDup) {
+          updates.pendingDirectives = [...existing.slice(-4), { id: dirId, text: dirText }]
+          changed = true
+        }
+      }
+    }
+
+    if (changed) {
+      setMissionState(updates)
+      missionStateRef.current = updates
+    }
+
+    return updates  // return synchronously — caller sends this exact object
+  }, [])
+
+  // ── Auto-relay: Kranz directs engineer → they respond automatically ────────
+  const autoRelay = useCallback(async (charKey, directive, directiveId) => {
+    if (relayInFlightRef.current.has(directiveId)) return
+    relayInFlightRef.current.add(directiveId)
+
+    const prompt = `Flight Director just ordered you: "${directive}" — respond directly with your current status and data.`
+
+    try {
+      const res = await fetch(`${API}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          character: charKey,
+          message: prompt,
+          history: [],
+          shared_context: sharedLogRef.current.slice(-10).map(e => ({ char: e.char, text: e.text })),
+          session_id: SESSION_ID,
+          mission_met: missionMet(),
+          mission_state: missionStateRef.current,
+        }),
+      })
+      const data = await res.json()
+      const reply = data.response
+
+      // showBroadcast writes to sharedLog — don't duplicate
+      showBroadcast(charKey, reply)
+      speakTTS(reply, charKey)
+
+      // Detect any state changes in relay response
+      detectAndApplyActions(reply, charKey, missionStateRef.current)
+
+      // Clear this directive from pending
+      setMissionState(prev => ({
+        ...prev,
+        pendingDirectives: (prev.pendingDirectives || []).filter(d => d.id !== directiveId)
+      }))
+    } catch (e) {
+      console.error('Auto-relay failed:', e)
+    } finally {
+      setTimeout(() => relayInFlightRef.current.delete(directiveId), 15000)
+    }
+  }, [])
+
+  // ── Movement ───────────────────────────────────────────────────────────────
   const stepPlayer = useCallback((dir) => {
     const [px, , pz] = playerPosRef.current
     const yaw = cameraYawRef.current
-
-    const fwdX = Math.sin(yaw)
-    const fwdZ = Math.cos(yaw)
-    const rgtX = Math.cos(yaw)
-    const rgtZ = -Math.sin(yaw)
-
+    const fwdX = Math.sin(yaw), fwdZ = Math.cos(yaw)
+    const rgtX = Math.cos(yaw), rgtZ = -Math.sin(yaw)
     const rawX = (-dir[0] * rgtX - dir[1] * fwdX)
     const rawZ = (-dir[0] * rgtZ - dir[1] * fwdZ)
     const len  = Math.sqrt(rawX * rawX + rawZ * rawZ) || 1
     const nx   = px + (rawX / len) * MOVE_SPEED
     const nz   = pz + (rawZ / len) * MOVE_SPEED
-
     let moved = false
-    if (isWalkable(nx, nz)) {
-      playerPosRef.current = [nx, 0, nz]; moved = true
-    } else if (isWalkable(nx, pz)) {
-      playerPosRef.current = [nx, 0, pz]; moved = true
-    } else if (isWalkable(px, nz)) {
-      playerPosRef.current = [px, 0, nz]; moved = true
-    }
-
+    if (isWalkable(nx, nz)) { playerPosRef.current = [nx, 0, nz]; moved = true }
+    else if (isWalkable(nx, pz)) { playerPosRef.current = [nx, 0, pz]; moved = true }
+    else if (isWalkable(px, nz)) { playerPosRef.current = [px, 0, nz]; moved = true }
     if (moved) {
       setPlayerPos([...playerPosRef.current])
       setIsPlayerMoving(true)
@@ -383,52 +478,29 @@ export default function App() {
     }
   }, [])
 
-  // ── RAF movement loop ──────────────────────────────────────────────────
-  // Every animation frame: read activeKeys + dpadDir, compute combined dir, step
   useEffect(() => {
     const KEY_DIR = {
-      w: [0,-1], arrowup: [0,-1],
-      s: [0, 1], arrowdown: [0, 1],
-      a: [-1,0], arrowleft: [-1,0],
-      d: [ 1,0], arrowright: [ 1,0],
+      w: [0,-1], arrowup: [0,-1], s: [0,1], arrowdown: [0,1],
+      a: [-1,0], arrowleft: [-1,0], d: [1,0], arrowright: [1,0],
     }
-
     const onKeyDown = (e) => {
-      if (introPhaseRef.current !== 'done') return
-      if (chatInputFocused.current) return
+      if (introPhaseRef.current !== 'done' || chatInputFocused.current) return
       const key = e.key.toLowerCase()
       if (KEY_DIR[key]) { e.preventDefault(); activeKeysRef.current.add(key) }
     }
-    const onKeyUp = (e) => {
-      activeKeysRef.current.delete(e.key.toLowerCase())
-    }
-
+    const onKeyUp = (e) => { activeKeysRef.current.delete(e.key.toLowerCase()) }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup',   onKeyUp)
-
     const loop = () => {
       rafRef.current = requestAnimationFrame(loop)
       if (introPhaseRef.current !== 'done') return
-
-      // Accumulate direction from all held keys + dpad
       let dx = 0, dz = 0
-      for (const k of activeKeysRef.current) {
-        const d = KEY_DIR[k]
-        if (d) { dx += d[0]; dz += d[1] }
-      }
-      if (dpadDirRef.current) {
-        dx += dpadDirRef.current[0]
-        dz += dpadDirRef.current[1]
-      }
+      for (const k of activeKeysRef.current) { const d = KEY_DIR[k]; if (d) { dx += d[0]; dz += d[1] } }
+      if (dpadDirRef.current) { dx += dpadDirRef.current[0]; dz += dpadDirRef.current[1] }
       if (dx !== 0 || dz !== 0) stepPlayer([dx, dz])
     }
     rafRef.current = requestAnimationFrame(loop)
-
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup',   onKeyUp)
-      cancelAnimationFrame(rafRef.current)
-    }
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); cancelAnimationFrame(rafRef.current) }
   }, [stepPlayer])
 
   // ── Proximity detection ────────────────────────────────────────────────────
@@ -436,7 +508,7 @@ export default function App() {
     const now = Date.now()
     for (const [charKey, [cx, , cz]] of Object.entries(HOME_POSITIONS)) {
       const dist = Math.sqrt((px - cx) ** 2 + (pz - cz) ** 2)
-      if (dist < PROXIMITY_DISTANCE) {
+      if (dist < PROXIMITY_DIST) {
         const lastGreet = greetCooldownRef.current[charKey] || 0
         if (now - lastGreet < 12000) return
         greetCooldownRef.current[charKey] = now
@@ -445,21 +517,23 @@ export default function App() {
         selectedCharRef.current = char
         setHistory([])
         setMessage('')
-        const greeting = PROXIMITY_GREETINGS[charKey] || 'Yes?'
-        setTimeout(() => triggerAutoGreet(char, greeting), 350)
+        setTimeout(() => triggerAutoGreet(char, PROXIMITY_GREETINGS[charKey] || 'Yes?'), 350)
         break
       }
     }
   }, [])
 
-  const triggerAutoGreet = useCallback(async (char, greetingText) => {
+  const triggerAutoGreet = useCallback((char, greetingText) => {
     const msgTime = missionTimeRef.current
     setHistory([{ role: 'assistant', content: greetingText, time: msgTime }])
-    setSharedLog(prev => [...prev.slice(-11), { char: char.name, text: greetingText, time: msgTime }])
+    setSharedLog(prev => {
+      const next = [...prev.slice(-19), { char: char.name, text: greetingText, time: msgTime }]
+      sharedLogRef.current = next
+      return next
+    })
     speakTTS(greetingText, char.name)
   }, [])
 
-  // ── D-pad — sets/clears dpadDirRef, RAF loop picks it up ─────────────────
   const startDpad = useCallback((dir) => { dpadDirRef.current = dir  }, [])
   const stopDpad  = useCallback(()    => { dpadDirRef.current = null }, [])
 
@@ -471,16 +545,18 @@ export default function App() {
     }))
   }, [])
 
-  const resetCharacterPositions = useCallback(() => {
-    setCharPositions({ ...HOME_POSITIONS })
-  }, [])
+  const resetCharacterPositions = useCallback(() => setCharPositions({ ...HOME_POSITIONS }), [])
 
   // ── Broadcast ──────────────────────────────────────────────────────────────
   const showBroadcast = useCallback((charKey, text) => {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
     setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
     setLastBroadcast({ char: CHAR_LABELS[charKey] || charKey, text })
-    setSharedLog(prev => [...prev.slice(-11), { char: charKey, text, time: missionTimeRef.current }])
+    setSharedLog(prev => {
+      const next = [...prev.slice(-19), { char: charKey, text, time: missionTimeRef.current }]
+      sharedLogRef.current = next
+      return next
+    })
     broadcastTimerRef.current = setTimeout(() => setBroadcast(null), 8000)
   }, [])
 
@@ -548,7 +624,7 @@ export default function App() {
     return `T+${h}:${m}:${s}`
   }
 
-  // ── TTS ─────────────────────────────────────────────────────────────────────
+  // ── TTS ────────────────────────────────────────────────────────────────────
   const stopAudio = () => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; audioRef.current = null }
     setTalkingChar(null)
@@ -613,17 +689,10 @@ export default function App() {
   }
 
   const handleSelect = (char) => {
-    stopAudio()
-    setSelectedChar(char)
-    selectedCharRef.current = char
-    setHistory([])
-    setMessage('')
+    stopAudio(); setSelectedChar(char); selectedCharRef.current = char; setHistory([]); setMessage('')
   }
 
-  const changeClockSpeed = useCallback((spd) => {
-    clockSpeedRef.current = spd
-    setClockSpeed(spd)
-  }, [])
+  const changeClockSpeed = useCallback((spd) => { clockSpeedRef.current = spd; setClockSpeed(spd) }, [])
 
   const handleCrisisToggle = () => {
     const next = !isAlert
@@ -642,7 +711,8 @@ export default function App() {
 
   const handleDecision = (option) => {
     setPendingDecision(null)
-    setSharedLog(prev => [...prev.slice(-11), { char: 'FLIGHT', text: `DECISION: ${option}`, time: missionTimeRef.current }])
+    const logEntry = { char: 'FLIGHT', text: `DECISION: ${option}`, time: missionTimeRef.current }
+    setSharedLog(prev => { const next = [...prev.slice(-19), logEntry]; sharedLogRef.current = next; return next })
     if (option === 'DECLARE EMERGENCY') {
       setIsAlert(true); setO2(82); setPower(74)
       alertStartTimeRef.current = missionTimeRef.current
@@ -660,18 +730,28 @@ export default function App() {
     }
   }
 
+  // ── Send message — core of the fix ────────────────────────────────────────
   const sendMessage = async (overrideMsg) => {
     const char = selectedCharRef.current || selectedChar
-    const msg = overrideMsg || message
+    const msg  = overrideMsg || message
     if (!msg.trim() || loading || !char) return
     stopAudio()
-    const msgTime = missionTimeRef.current
-    const userMsg = { role: 'user', content: msg, time: msgTime }
+
+    const msgTime    = missionTimeRef.current
+    const userMsg    = { role: 'user', content: msg, time: msgTime }
     const newHistory = [...history, userMsg]
     setHistory(newHistory)
-    setSharedLog(prev => [...prev.slice(-11), { char: 'GROUND', text: msg, time: msgTime }])
+
+    // Update shared log ref synchronously
+    const newLog = [...sharedLogRef.current.slice(-19), { char: 'GROUND', text: msg, time: msgTime }]
+    sharedLogRef.current = newLog
+    setSharedLog(newLog)
     setMessage('')
     setLoading(true)
+
+    // Detect actions synchronously — get the exact updated state to send
+    const nextState = detectAndApplyActions(msg, char.name === 'KRANZ' ? 'KRANZ' : 'GROUND', missionStateRef.current)
+
     try {
       const res = await fetch(`${API}/chat`, {
         method: 'POST',
@@ -680,17 +760,36 @@ export default function App() {
           character: char.name,
           message: msg,
           history: history.slice(-8).map(h => ({ role: h.role, content: h.content })),
-          shared_context: sharedLog.slice(-4).map(e => ({ char: e.char, text: e.text })),
+          shared_context: newLog.slice(-20).map(e => ({ char: e.char, text: e.text })),
           session_id: SESSION_ID,
           mission_met: missionMet(),
+          mission_state: nextState,  // ← exact synchronous state, not stale
         }),
       })
-      const data = await res.json()
+      const data  = await res.json()
       const reply = data.response
       const replyTime = missionTimeRef.current
+
       setHistory([...newHistory, { role: 'assistant', content: reply, time: replyTime }])
-      setSharedLog(prev => [...prev.slice(-11), { char: char.name, text: reply, time: replyTime }])
+
+      const replyLog = [...sharedLogRef.current.slice(-19), { char: char.name, text: reply, time: replyTime }]
+      sharedLogRef.current = replyLog
+      setSharedLog(replyLog)
       setLastBroadcast({ char: CHAR_LABELS[char.name] || char.name, text: reply })
+
+      // Detect state changes in response
+      const finalState = detectAndApplyActions(reply, char.name, missionStateRef.current)
+
+      // If Kranz issued a directive, auto-relay to that engineer after 2.2s
+      if (char.name === 'KRANZ') {
+        const dirMatch = reply.match(/(FIDO|GUIDO|TELMU|RETRO|DOC)[,\s]+([^.!?\n]{10,80})/i)
+        if (dirMatch) {
+          const targetKey = CHAR_MAP[dirMatch[1].toUpperCase()]
+          const dirId     = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+          if (targetKey) setTimeout(() => autoRelay(targetKey, dirMatch[2].trim(), dirId), 2200)
+        }
+      }
+
       speakTTS(reply, char.name)
     } catch {
       setHistory([...newHistory, { role: 'assistant', content: '[COMMS FAILURE]', time: msgTime }])
@@ -699,18 +798,18 @@ export default function App() {
   }
 
   const exportTranscript = () => {
-    if (sharedLog.length === 0) return
-    const lines = [`APOLLO 13 MISSION TRANSCRIPT`, `Generated: ${formatMissionTime(missionTimeRef.current)}`, `Timeline: ${timelineBranch}`, `${'\u2550'.repeat(42)}`, '']
-    sharedLog.forEach(e => { lines.push(`[${formatMissionTime(e.time)}] ${CHAR_LABELS[e.char] || e.char}`); lines.push(e.text); lines.push('') })
+    if (sharedLogRef.current.length === 0) return
+    const lines = [`APOLLO 13 MISSION TRANSCRIPT`, `Generated: ${formatMissionTime(missionTimeRef.current)}`, `Timeline: ${timelineBranch}`, `${'═'.repeat(42)}`, '']
+    sharedLogRef.current.forEach(e => { lines.push(`[${formatMissionTime(e.time)}] ${CHAR_LABELS[e.char] || e.char}`); lines.push(e.text); lines.push('') })
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
     a.href = url; a.download = 'apollo13-transcript.txt'; a.click()
     URL.revokeObjectURL(url)
   }
 
   const gaugeColor = (val) => val > 60 ? '#4af0c0' : val > 30 ? '#ffaa00' : '#ff4400'
-  const telColor = (key, val) => {
+  const telColor   = (key, val) => {
     if (key === 'co2'  && val > 7)  return '#ff4400'
     if (key === 'co2'  && val > 4)  return '#ffaa00'
     if (key === 'temp' && val < 10) return '#4af'
@@ -728,7 +827,7 @@ export default function App() {
   }
 
   const onChatTouchStart = (e) => { touchStartXRef.current = e.touches[0].clientX }
-  const onChatTouchEnd = (e) => {
+  const onChatTouchEnd   = (e) => {
     if (touchStartXRef.current === null) return
     const dx = e.changedTouches[0].clientX - touchStartXRef.current
     if (dx < -60) { stopAudio(); setSelectedChar(null) }
@@ -763,14 +862,12 @@ export default function App() {
         <FirstPersonCamera playerPos={playerPos} yawRef={cameraYawRef} />
       </Canvas>
 
-      {/* INTRO */}
       {introPhase !== 'done' && (
         <div className="intro-overlay" onClick={handleGlobalClick}>
           <pre className="intro-text">{introText}<span className="intro-cursor">█</span></pre>
         </div>
       )}
 
-      {/* TOP BAR */}
       <div className="topbar" style={{ borderBottom: `1px solid ${isAlert ? '#ff4400' : '#1a3a6a'}` }}>
         <span className="topbar-title" style={{ color: isAlert ? '#ff4400' : '#4af' }}>CHRONICLES AI · APOLLO 13</span>
         <span className="topbar-clock">{formatMissionTime(missionTime)}</span>
@@ -795,7 +892,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* BROADCAST */}
       {broadcast && (
         <div className="broadcast" style={{ borderLeft: `3px solid ${broadcast.color}` }}>
           <span className="broadcast-who" style={{ color: broadcast.color }}>{CHAR_LABELS[broadcast.charKey] || broadcast.charKey}</span>
@@ -803,7 +899,6 @@ export default function App() {
         </div>
       )}
 
-      {/* SYSTEMS HUD */}
       <div className="hud" style={{ border: `1px solid ${isAlert ? '#ff4400' : '#1a3a6a'}` }}>
         <div className="hud-label">SYSTEMS STATUS</div>
         {[{ label: 'O₂ SUPPLY', value: o2 }, { label: 'POWER', value: power }].map(({ label, value }) => (
@@ -822,7 +917,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* TELEMETRY */}
       <div className="telemetry" style={{ border: `1px solid ${isAlert ? '#ff4400' : '#1a3a6a'}` }}>
         <div className="hud-label">TELEMETRY</div>
         {[
@@ -841,7 +935,6 @@ export default function App() {
         ))}
       </div>
 
-      {/* PHYSICS EVAL PANEL */}
       {evalResult && (
         <div className="eval-panel" style={{ borderColor: evalResult.viable ? '#4af0c0' : '#ff4400' }}
           onClick={e => e.stopPropagation()}>
@@ -861,7 +954,6 @@ export default function App() {
         </div>
       )}
 
-      {/* DECISION OVERLAY */}
       {pendingDecision && (
         <div className="decision-overlay" onClick={e => e.stopPropagation()}>
           <div className="decision-box" style={{ borderColor: isAlert ? '#ff4400' : '#ff8800' }}>
@@ -880,7 +972,6 @@ export default function App() {
         </div>
       )}
 
-      {/* CHAT PANEL */}
       {selectedChar && (
         <div className="chat-panel"
           style={{
@@ -961,22 +1052,13 @@ export default function App() {
         </div>
       )}
 
-      {/* D-PAD */}
       {introPhase === 'done' && (
         <div className="dpad" onClick={e => e.stopPropagation()}>
-          <button className="dpad-btn dpad-up"
-            onPointerDown={e => { e.preventDefault(); startDpad([0,-1]) }}
-            onPointerUp={stopDpad} onPointerLeave={stopDpad}>▲</button>
-          <button className="dpad-btn dpad-left"
-            onPointerDown={e => { e.preventDefault(); startDpad([-1,0]) }}
-            onPointerUp={stopDpad} onPointerLeave={stopDpad}>◀</button>
+          <button className="dpad-btn dpad-up"    onPointerDown={e => { e.preventDefault(); startDpad([0,-1]) }} onPointerUp={stopDpad} onPointerLeave={stopDpad}>▲</button>
+          <button className="dpad-btn dpad-left"  onPointerDown={e => { e.preventDefault(); startDpad([-1,0]) }} onPointerUp={stopDpad} onPointerLeave={stopDpad}>◀</button>
           <button className="dpad-btn dpad-center" />
-          <button className="dpad-btn dpad-right"
-            onPointerDown={e => { e.preventDefault(); startDpad([1,0]) }}
-            onPointerUp={stopDpad} onPointerLeave={stopDpad}>▶</button>
-          <button className="dpad-btn dpad-down"
-            onPointerDown={e => { e.preventDefault(); startDpad([0,1]) }}
-            onPointerUp={stopDpad} onPointerLeave={stopDpad}>▼</button>
+          <button className="dpad-btn dpad-right" onPointerDown={e => { e.preventDefault(); startDpad([1,0])  }} onPointerUp={stopDpad} onPointerLeave={stopDpad}>▶</button>
+          <button className="dpad-btn dpad-down"  onPointerDown={e => { e.preventDefault(); startDpad([0,1])  }} onPointerUp={stopDpad} onPointerLeave={stopDpad}>▼</button>
         </div>
       )}
 
@@ -1065,51 +1147,19 @@ export default function App() {
         .btn-send { border:none;border-radius:4px;padding:7px 11px;font-family:monospace;font-size:12px;cursor:pointer;flex-shrink:0; }
         .btn-send:disabled { cursor:default; }
 
-        .dpad {
-          position: absolute;
-          bottom: 24px;
-          right: 24px;
-          display: grid;
-          grid-template-areas: ". up ." "left center right" ". down .";
-          grid-template-columns: 48px 48px 48px;
-          grid-template-rows: 48px 48px 48px;
-          gap: 4px;
-          z-index: 15;
-        }
-        .dpad-btn {
-          background: rgba(0,0,10,0.75);
-          border: 1px solid #1a3a6a;
-          border-radius: 8px;
-          color: #4af;
-          font-size: 18px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          user-select: none;
-          touch-action: none;
-          transition: background 0.1s, border-color 0.1s;
-        }
-        .dpad-btn:active { background: rgba(26,58,106,0.85); border-color: #4af; }
-        .dpad-up     { grid-area: up; }
-        .dpad-left   { grid-area: left; }
-        .dpad-center { grid-area: center; background: transparent; border-color: transparent; pointer-events: none; }
-        .dpad-right  { grid-area: right; }
-        .dpad-down   { grid-area: down; }
+        .dpad { position:absolute;bottom:24px;right:24px;display:grid;grid-template-areas:". up ." "left center right" ". down .";grid-template-columns:48px 48px 48px;grid-template-rows:48px 48px 48px;gap:4px;z-index:15; }
+        .dpad-btn { background:rgba(0,0,10,0.75);border:1px solid #1a3a6a;border-radius:8px;color:#4af;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:none;transition:background 0.1s,border-color 0.1s; }
+        .dpad-btn:active { background:rgba(26,58,106,0.85);border-color:#4af; }
+        .dpad-up { grid-area:up; } .dpad-left { grid-area:left; } .dpad-center { grid-area:center;background:transparent;border-color:transparent;pointer-events:none; } .dpad-right { grid-area:right; } .dpad-down { grid-area:down; }
 
         .bottom-hint { position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:#1e1e2e;font-family:monospace;font-size:clamp(8px,1.4vw,10px);letter-spacing:1px;pointer-events:none;white-space:nowrap;z-index:5; }
 
         @media (max-width: 480px) {
           .chat-panel { left:8px;right:8px;width:auto;bottom:8px;max-height:50vh; }
-          .hud { display:none; }
-          .telemetry { display:none; }
-          .topbar-title { display:none; }
-          .bottom-hint { display:none; }
-          .broadcast { width:96vw; }
-          .eval-panel { width:96vw;left:2vw;transform:none; }
-          .timeline-badge { display:none; }
-          .dpad { bottom:16px;right:16px; }
-          .dpad-btn { width:44px;height:44px;font-size:16px; }
+          .hud { display:none; } .telemetry { display:none; } .topbar-title { display:none; }
+          .bottom-hint { display:none; } .broadcast { width:96vw; }
+          .eval-panel { width:96vw;left:2vw;transform:none; } .timeline-badge { display:none; }
+          .dpad { bottom:16px;right:16px; } .dpad-btn { width:44px;height:44px;font-size:16px; }
         }
 
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
