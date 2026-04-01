@@ -8,6 +8,10 @@ export default defineConfig({
     port: 5000,
     allowedHosts: true,
     proxy: {
+      '/chat': { target: 'http://localhost:8000', changeOrigin: true },
+      '/tts': { target: 'http://localhost:8000', changeOrigin: true },
+      '/evaluate': { target: 'http://localhost:8000', changeOrigin: true },
+      '/transcribe': { target: 'http://localhost:8000', changeOrigin: true },
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
