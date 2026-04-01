@@ -1,192 +1,350 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import World from './world/World'
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import World from "./world/World";
 
 // ── FPS Camera ───────────────────────────────────────────────────────────────
 function FirstPersonCamera({ playerPos, yawRef }) {
-  const smooth  = useRef({ x: playerPos[0], z: playerPos[2] })
-  const pitch   = useRef(0)
-  const isDrag  = useRef(false)
-  const lastPos = useRef({ x: 0, y: 0 })
+  const smooth = useRef({ x: playerPos[0], z: playerPos[2] });
+  const pitch = useRef(0);
+  const isDrag = useRef(false);
+  const lastPos = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
-    const SENSITIVITY = 0.004
-    const onMouseDown = (e) => { isDrag.current = true; lastPos.current = { x: e.clientX, y: e.clientY } }
+    const SENSITIVITY = 0.004;
+    const onMouseDown = (e) => {
+      isDrag.current = true;
+      lastPos.current = { x: e.clientX, y: e.clientY };
+    };
     const onMouseMove = (e) => {
-      if (!isDrag.current) return
-      const dx = e.clientX - lastPos.current.x
-      const dy = e.clientY - lastPos.current.y
-      lastPos.current = { x: e.clientX, y: e.clientY }
-      yawRef.current -= dx * SENSITIVITY
-      pitch.current = Math.max(-0.6, Math.min(0.6, pitch.current - dy * SENSITIVITY))
-    }
-    const onMouseUp = () => { isDrag.current = false }
+      if (!isDrag.current) return;
+      const dx = e.clientX - lastPos.current.x;
+      const dy = e.clientY - lastPos.current.y;
+      lastPos.current = { x: e.clientX, y: e.clientY };
+      yawRef.current -= dx * SENSITIVITY;
+      pitch.current = Math.max(
+        -0.6,
+        Math.min(0.6, pitch.current - dy * SENSITIVITY),
+      );
+    };
+    const onMouseUp = () => {
+      isDrag.current = false;
+    };
     const onTouchStart = (e) => {
-      if (e.target.closest('.chat-panel,.dpad,.topbar,.hud,.telemetry,.broadcast,.decision-overlay,.eval-panel')) return
-      isDrag.current = true
-      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-    }
+      if (
+        e.target.closest(
+          ".chat-panel,.dpad,.topbar,.hud,.telemetry,.broadcast,.decision-overlay,.eval-panel",
+        )
+      )
+        return;
+      isDrag.current = true;
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
     const onTouchMove = (e) => {
-      if (!isDrag.current) return
-      const dx = e.touches[0].clientX - lastPos.current.x
-      const dy = e.touches[0].clientY - lastPos.current.y
-      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-      yawRef.current -= dx * SENSITIVITY
-      pitch.current = Math.max(-0.6, Math.min(0.6, pitch.current - dy * SENSITIVITY))
-    }
-    const onTouchEnd = () => { isDrag.current = false }
-    window.addEventListener('mousedown',  onMouseDown)
-    window.addEventListener('mousemove',  onMouseMove)
-    window.addEventListener('mouseup',    onMouseUp)
-    window.addEventListener('touchstart', onTouchStart, { passive: true })
-    window.addEventListener('touchmove',  onTouchMove,  { passive: true })
-    window.addEventListener('touchend',   onTouchEnd)
+      if (!isDrag.current) return;
+      const dx = e.touches[0].clientX - lastPos.current.x;
+      const dy = e.touches[0].clientY - lastPos.current.y;
+      lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      yawRef.current -= dx * SENSITIVITY;
+      pitch.current = Math.max(
+        -0.6,
+        Math.min(0.6, pitch.current - dy * SENSITIVITY),
+      );
+    };
+    const onTouchEnd = () => {
+      isDrag.current = false;
+    };
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onTouchEnd);
     return () => {
-      window.removeEventListener('mousedown',  onMouseDown)
-      window.removeEventListener('mousemove',  onMouseMove)
-      window.removeEventListener('mouseup',    onMouseUp)
-      window.removeEventListener('touchstart', onTouchStart)
-      window.removeEventListener('touchmove',  onTouchMove)
-      window.removeEventListener('touchend',   onTouchEnd)
-    }
-  }, [])
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
 
   useFrame(({ camera }) => {
-    const [tx, , tz] = playerPos
-    smooth.current.x += (tx - smooth.current.x) * 0.18
-    smooth.current.z += (tz - smooth.current.z) * 0.18
-    const EYE_Y = 1.75
-    camera.position.set(smooth.current.x, EYE_Y, smooth.current.z)
-    const lookX = smooth.current.x + Math.sin(yawRef.current) * Math.cos(pitch.current)
-    const lookY = EYE_Y + Math.sin(pitch.current)
-    const lookZ = smooth.current.z + Math.cos(yawRef.current) * Math.cos(pitch.current)
-    camera.lookAt(lookX, lookY, lookZ)
-  })
+    const [tx, , tz] = playerPos;
+    smooth.current.x += (tx - smooth.current.x) * 0.18;
+    smooth.current.z += (tz - smooth.current.z) * 0.18;
+    const EYE_Y = 1.75;
+    camera.position.set(smooth.current.x, EYE_Y, smooth.current.z);
+    const lookX =
+      smooth.current.x + Math.sin(yawRef.current) * Math.cos(pitch.current);
+    const lookY = EYE_Y + Math.sin(pitch.current);
+    const lookZ =
+      smooth.current.z + Math.cos(yawRef.current) * Math.cos(pitch.current);
+    camera.lookAt(lookX, lookY, lookZ);
+  });
 
-  return null
+  return null;
 }
 
-const API = '/api'
-const SESSION_ID = Math.random().toString(36).slice(2, 10)
+const API = "/api";
+const SESSION_ID = Math.random().toString(36).slice(2, 10);
 
 const COLLISION_MAP = [
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2],
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2],
-  [2,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,2],
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
-  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2],
-  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2],
-  [2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2],
-  [2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2],
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
-  [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2],
-  [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
-]
+  [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+  [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+  [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+  [2, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 2],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+  [2, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 2],
+  [2, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 2],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+  [2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2],
+  [2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2],
+  [2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2],
+  [2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+  [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+];
 
 const isWalkable = (wx, wz) => {
-  const tx = Math.floor(wx + 12.5)
-  const tz = Math.floor(wz + 9.5)
-  if (tx < 0 || tx >= 25 || tz < 0 || tz >= 18) return false
-  const t = COLLISION_MAP[tz][tx]
-  return t === 0 || t === 4
-}
+  const tx = Math.floor(wx + 12.5);
+  const tz = Math.floor(wz + 9.5);
+  if (tx < 0 || tx >= 25 || tz < 0 || tz >= 18) return false;
+  const t = COLLISION_MAP[tz][tx];
+  return t === 0 || t === 4;
+};
 
 const HOME_POSITIONS = {
-  'KRANZ': [0,  0,  3],
-  'ENG-1': [-4, 0, -1],
-  'ENG-2': [0,  0, -1],
-  'ENG-3': [4,  0, -1],
-  'ENG-4': [-4, 0, -4],
-  'ENG-5': [4,  0, -4],
-}
+  KRANZ: [0, 0, 3],
+  "ENG-1": [-4, 0, -1],
+  "ENG-2": [0, 0, -1],
+  "ENG-3": [4, 0, -1],
+  "ENG-4": [-4, 0, -4],
+  "ENG-5": [4, 0, -4],
+};
 
 const CRISIS_POSITIONS = {
-  'KRANZ': [0,  0,  0],
-  'ENG-3': [0,  0,  1],
-  'ENG-4': [-2, 0,  0],
-  'ENG-5': [2,  0,  0],
-}
+  KRANZ: [0, 0, 0],
+  "ENG-3": [0, 0, 1],
+  "ENG-4": [-2, 0, 0],
+  "ENG-5": [2, 0, 0],
+};
 
 const CHARACTER_ROLES = {
-  'KRANZ': { title: 'Flight Director',          color: '#ff6600', bio: 'Gene Kranz. In charge of everything. His word is final.' },
-  'ENG-1': { title: 'FIDO — Flight Dynamics',   color: '#4af',    bio: 'Tracks spacecraft trajectory and orbital mechanics.' },
-  'ENG-2': { title: 'GUIDO — Guidance',         color: '#88f',    bio: 'Monitors onboard guidance computer systems.' },
-  'ENG-3': { title: 'TELMU — Electrical',       color: '#4af0c0', bio: 'Monitors power and life support systems.' },
-  'ENG-4': { title: 'RETRO — Retrofire',        color: '#aaf',    bio: 'Calculates re-entry burn procedures.' },
-  'ENG-5': { title: 'DOC — Flight Surgeon',     color: '#ffa0a0', bio: 'Monitors crew health and vital signs.' },
-}
+  KRANZ: {
+    title: "Flight Director",
+    color: "#ff6600",
+    bio: "Gene Kranz. In charge of everything. His word is final.",
+  },
+  "ENG-1": {
+    title: "FIDO — Flight Dynamics",
+    color: "#4af",
+    bio: "Tracks spacecraft trajectory and orbital mechanics.",
+  },
+  "ENG-2": {
+    title: "GUIDO — Guidance",
+    color: "#88f",
+    bio: "Monitors onboard guidance computer systems.",
+  },
+  "ENG-3": {
+    title: "TELMU — Electrical",
+    color: "#4af0c0",
+    bio: "Monitors power and life support systems.",
+  },
+  "ENG-4": {
+    title: "RETRO — Retrofire",
+    color: "#aaf",
+    bio: "Calculates re-entry burn procedures.",
+  },
+  "ENG-5": {
+    title: "DOC — Flight Surgeon",
+    color: "#ffa0a0",
+    bio: "Monitors crew health and vital signs.",
+  },
+};
 
 const PROXIMITY_GREETINGS = {
-  'KRANZ': "Someone just walked up to my console. State your business — fast.",
-  'ENG-1': "Hey — you heading to Flight? I can give you a quick trajectory update.",
-  'ENG-2': "I was just cross-checking the state vector. Something you need?",
-  'ENG-3': "Not a great time — power margins are razor thin. What is it?",
-  'ENG-4': "You have 30 seconds. I'm working the burn window.",
-  'ENG-5': "I'm monitoring crew vitals. What can I do for you?",
-}
+  KRANZ: "Someone just walked up to my console. State your business — fast.",
+  "ENG-1":
+    "Hey — you heading to Flight? I can give you a quick trajectory update.",
+  "ENG-2": "I was just cross-checking the state vector. Something you need?",
+  "ENG-3": "Not a great time — power margins are razor thin. What is it?",
+  "ENG-4": "You have 30 seconds. I'm working the burn window.",
+  "ENG-5": "I'm monitoring crew vitals. What can I do for you?",
+};
 
 const CHAR_COLORS = {
-  'KRANZ': '#ff6600', 'ENG-1': '#4af', 'ENG-2': '#88f',
-  'ENG-3': '#4af0c0', 'ENG-4': '#aaf', 'ENG-5': '#ffa0a0',
-}
+  KRANZ: "#ff6600",
+  "ENG-1": "#4af",
+  "ENG-2": "#88f",
+  "ENG-3": "#4af0c0",
+  "ENG-4": "#aaf",
+  "ENG-5": "#ffa0a0",
+};
 const CHAR_LABELS = {
-  'KRANZ': 'KRANZ', 'ENG-1': 'FIDO', 'ENG-2': 'GUIDO',
-  'ENG-3': 'TELMU', 'ENG-4': 'RETRO', 'ENG-5': 'DOC',
-}
+  KRANZ: "KRANZ",
+  "ENG-1": "FIDO",
+  "ENG-2": "GUIDO",
+  "ENG-3": "TELMU",
+  "ENG-4": "RETRO",
+  "ENG-5": "DOC",
+};
 
-const CHAR_MAP = { FIDO: 'ENG-1', GUIDO: 'ENG-2', TELMU: 'ENG-3', RETRO: 'ENG-4', DOC: 'ENG-5' }
+const CHAR_MAP = {
+  FIDO: "ENG-1",
+  GUIDO: "ENG-2",
+  TELMU: "ENG-3",
+  RETRO: "ENG-4",
+  DOC: "ENG-5",
+};
 
 const QUICK_PROMPTS = {
-  'KRANZ':  ["What's the situation?", "Can we save the crew?", "What are our options?"],
-  'ENG-1':  ["Where is the spacecraft now?", "Can we correct the trajectory?", "How long until splashdown?"],
-  'ENG-2':  ["Is the guidance computer still working?", "Can we trust the navigation?", "What does the data show?"],
-  'ENG-3':  ["How much power do we have left?", "Is the oxygen holding?", "What do we shut down first?"],
-  'ENG-4':  ["How do we get them home?", "When is the re-entry window?", "What burn do we need?"],
-  'ENG-5':  ["How is the crew holding up?", "Are they in danger?", "What are their vitals?"],
-}
+  KRANZ: [
+    "What's the situation?",
+    "Can we save the crew?",
+    "What are our options?",
+  ],
+  "ENG-1": [
+    "Where is the spacecraft now?",
+    "Can we correct the trajectory?",
+    "How long until splashdown?",
+  ],
+  "ENG-2": [
+    "Is the guidance computer still working?",
+    "Can we trust the navigation?",
+    "What does the data show?",
+  ],
+  "ENG-3": [
+    "How much power do we have left?",
+    "Is the oxygen holding?",
+    "What do we shut down first?",
+  ],
+  "ENG-4": [
+    "How do we get them home?",
+    "When is the re-entry window?",
+    "What burn do we need?",
+  ],
+  "ENG-5": [
+    "How is the crew holding up?",
+    "Are they in danger?",
+    "What are their vitals?",
+  ],
+};
 
 const MISSION_EVENTS = [
-  { id: 'e1', at: 8,   charKey: 'KRANZ', text: "All stations — verify your systems. Stay sharp tonight." },
-  { id: 'e2', at: 30,  charKey: 'ENG-3', text: "Flight, showing anomalous O2 tank 2 heater cycling. Watching it." },
-  { id: 'e3', at: 75,  charKey: 'ENG-1', text: "Trajectory nominal. Vehicle is right on the money at 199,340 klicks." },
-  { id: 'e4', at: 140, charKey: 'KRANZ', text: "Odyssey, Houston — requesting cryo stir on all tanks. Acknowledge." },
   {
-    id: 'e5', at: 200, charKey: 'ENG-3',
-    text: "FLIGHT — MASTER ALARM. Tank 2 pressure spike then dropout. I've lost SM O2 tank 2 telemetry.",
-    decision: { question: "FLIGHT DIRECTOR: Major anomaly confirmed. Your call —", options: ["DECLARE EMERGENCY", "HOLD AND MONITOR"] },
+    id: "e1",
+    at: 8,
+    charKey: "KRANZ",
+    text: "All stations — verify your systems. Stay sharp tonight.",
   },
-  { id: 'e6', at: 240, charKey: 'ENG-1', text: "Flight, I'm showing attitude disturbance. Something vented from the SM." },
-]
+  {
+    id: "e2",
+    at: 30,
+    charKey: "ENG-3",
+    text: "Flight, showing anomalous O2 tank 2 heater cycling. Watching it.",
+  },
+  {
+    id: "e3",
+    at: 75,
+    charKey: "ENG-1",
+    text: "Trajectory nominal. Vehicle is right on the money at 199,340 klicks.",
+  },
+  {
+    id: "e4",
+    at: 140,
+    charKey: "KRANZ",
+    text: "Odyssey, Houston — requesting cryo stir on all tanks. Acknowledge.",
+  },
+  {
+    id: "e5",
+    at: 200,
+    charKey: "ENG-3",
+    text: "FLIGHT — MASTER ALARM. Tank 2 pressure spike then dropout. I've lost SM O2 tank 2 telemetry.",
+    decision: {
+      question: "FLIGHT DIRECTOR: Major anomaly confirmed. Your call —",
+      options: ["DECLARE EMERGENCY", "HOLD AND MONITOR"],
+    },
+  },
+  {
+    id: "e6",
+    at: 240,
+    charKey: "ENG-1",
+    text: "Flight, I'm showing attitude disturbance. Something vented from the SM.",
+  },
+];
 
 const CRISIS_EVENTS = [
-  { id: 'c1', at: 10,  charKey: 'ENG-3', text: "Power is at 27 amps and dropping fast. We need to start shedding load NOW." },
   {
-    id: 'c2', at: 40,  charKey: 'ENG-4',
+    id: "c1",
+    at: 10,
+    charKey: "ENG-3",
+    text: "Power is at 27 amps and dropping fast. We need to start shedding load NOW.",
+  },
+  {
+    id: "c2",
+    at: 40,
+    charKey: "ENG-4",
     text: "PC+2 burn window opens at T+79:27. That's our best shot at Pacific splashdown — 30.7 m/s, DPS engine.",
-    evalTrigger: { type: 'burn', params: { delta_v_ms: 30.7, met_hours: 79.46 }, label: 'PC+2 BURN EVALUATION' },
+    evalTrigger: {
+      type: "burn",
+      params: { delta_v_ms: 30.7, met_hours: 79.46 },
+      label: "PC+2 BURN EVALUATION",
+    },
   },
-  { id: 'c3', at: 85,  charKey: 'ENG-5', text: "Cabin temp is dropping. At this rate — 38°F in six hours. Hypothermia is a real risk." },
   {
-    id: 'c4', at: 120, charKey: 'ENG-3',
+    id: "c3",
+    at: 85,
+    charKey: "ENG-5",
+    text: "Cabin temp is dropping. At this rate — 38°F in six hours. Hypothermia is a real risk.",
+  },
+  {
+    id: "c4",
+    at: 120,
+    charKey: "ENG-3",
     text: "I'm shedding load to 12 amps. That gives us 87 hours of return power — barely.",
-    evalTrigger: { type: 'power', params: { load_amps: 12 }, label: 'POWER BUDGET EVALUATION' },
+    evalTrigger: {
+      type: "power",
+      params: { load_amps: 12 },
+      label: "POWER BUDGET EVALUATION",
+    },
   },
-  { id: 'c5', at: 135, charKey: 'KRANZ', text: "People — I want solutions, not problems. What do we HAVE to work with? Work the problem." },
-  { id: 'c6', at: 200, charKey: 'ENG-2', text: "Flight, CO2 scrubbers in the LEM saturate in roughly 87 hours. Square canisters from Odyssey won't fit Aquarius's round holes." },
   {
-    id: 'c7', at: 250, charKey: 'ENG-3',
-    text: "Tiger Team says: cardboard, plastic bag, sock, hose, duct tape. The mailbox fix.",
-    evalTrigger: { type: 'co2', params: { materials: ['cardboard', 'plastic bag', 'sock', 'hose', 'duct tape'] }, label: 'CO2 FIX EVALUATION' },
+    id: "c5",
+    at: 135,
+    charKey: "KRANZ",
+    text: "People — I want solutions, not problems. What do we HAVE to work with? Work the problem.",
   },
-  { id: 'c8', at: 310, charKey: 'ENG-5', text: "Lovell reporting 3.5 rem radiation. Nothing critical — yet." },
-]
+  {
+    id: "c6",
+    at: 200,
+    charKey: "ENG-2",
+    text: "Flight, CO2 scrubbers in the LEM saturate in roughly 87 hours. Square canisters from Odyssey won't fit Aquarius's round holes.",
+  },
+  {
+    id: "c7",
+    at: 250,
+    charKey: "ENG-3",
+    text: "Tiger Team says: cardboard, plastic bag, sock, hose, duct tape. The mailbox fix.",
+    evalTrigger: {
+      type: "co2",
+      params: {
+        materials: ["cardboard", "plastic bag", "sock", "hose", "duct tape"],
+      },
+      label: "CO2 FIX EVALUATION",
+    },
+  },
+  {
+    id: "c8",
+    at: 310,
+    charKey: "ENG-5",
+    text: "Lovell reporting 3.5 rem radiation. Nothing critical — yet.",
+  },
+];
 
 const INTRO_LINES = [
   "APRIL 13, 1970  ·  21:08 CST",
@@ -205,12 +363,12 @@ const INTRO_LINES = [
   "[ CLICK ANYWHERE TO ENTER ]",
   "",
   "WASD or D-PAD to move · Click & drag to look around",
-]
-const INTRO_FULL = INTRO_LINES.join('\n')
+];
+const INTRO_FULL = INTRO_LINES.join("\n");
 
-const PLAYER_START   = [0, 0, 5]
-const PROXIMITY_DIST = 1.9
-const MOVE_SPEED     = 0.06
+const PLAYER_START = [0, 0, 5];
+const PROXIMITY_DIST = 1.9;
+const MOVE_SPEED = 0.06;
 
 const EMPTY_MISSION_STATE = {
   powerReduced: false,
@@ -220,630 +378,942 @@ const EMPTY_MISSION_STATE = {
   lemActivated: false,
   navigationTransferred: false,
   freeReturn: false,
-  pendingDirectives: [],  // [{ id, text }]
-}
+  pendingDirectives: [], // [{ id, text }]
+};
 
 export default function App() {
-  const [selectedChar,    setSelectedChar]    = useState(null)
-  const [isAlert,         setIsAlert]         = useState(false)
-  const [message,         setMessage]         = useState('')
-  const [history,         setHistory]         = useState([])
-  const [loading,         setLoading]         = useState(false)
-  const [recording,       setRecording]       = useState(false)
-  const [transcribing,    setTranscribing]    = useState(false)
-  const [talkingChar,     setTalkingChar]     = useState(null)
-  const [o2,              setO2]              = useState(100)
-  const [power,           setPower]           = useState(100)
-  const [missionTime,     setMissionTime]     = useState(0)
-  const [clockSpeed,      setClockSpeed]      = useState(1)
-  const clockSpeedRef     = useRef(1)
-  const [introPhase,      setIntroPhase]      = useState('typing')
-  const [introText,       setIntroText]       = useState('')
-  const [broadcast,       setBroadcast]       = useState(null)
-  const [sharedLog,       setSharedLog]       = useState([])
-  const [telemetry,       setTelemetry]       = useState({ alt: 199340, vel: 1.53, co2: 2.5, temp: 21.0, batt: 29.5 })
-  const [pendingDecision, setPendingDecision] = useState(null)
-  const [charPositions,   setCharPositions]   = useState({ ...HOME_POSITIONS })
-  const [evalResult,      setEvalResult]      = useState(null)
-  const [timelineBranch,  setTimelineBranch]  = useState('A')
-  const [lastBroadcast,   setLastBroadcast]   = useState(null)
-  const [missionState,    setMissionState]    = useState({ ...EMPTY_MISSION_STATE })
+  const [selectedChar, setSelectedChar] = useState(null);
+  const [isAlert, setIsAlert] = useState(false);
+  const [message, setMessage] = useState("");
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [talkingChar, setTalkingChar] = useState(null);
+  const [o2, setO2] = useState(100);
+  const [power, setPower] = useState(100);
+  const [missionTime, setMissionTime] = useState(0);
+  const [clockSpeed, setClockSpeed] = useState(1);
+  const clockSpeedRef = useRef(1);
+  const [introPhase, setIntroPhase] = useState("typing");
+  const [introText, setIntroText] = useState("");
+  const [broadcast, setBroadcast] = useState(null);
+  const [sharedLog, setSharedLog] = useState([]);
+  const [telemetry, setTelemetry] = useState({
+    alt: 199340,
+    vel: 1.53,
+    co2: 2.5,
+    temp: 21.0,
+    batt: 29.5,
+  });
+  const [pendingDecision, setPendingDecision] = useState(null);
+  const [charPositions, setCharPositions] = useState({ ...HOME_POSITIONS });
+  const [evalResult, setEvalResult] = useState(null);
+  const [timelineBranch, setTimelineBranch] = useState("A");
+  const [lastBroadcast, setLastBroadcast] = useState(null);
+  const [missionState, setMissionState] = useState({ ...EMPTY_MISSION_STATE });
 
-  const [playerPos,       setPlayerPos]       = useState(PLAYER_START)
-  const [isPlayerMoving,  setIsPlayerMoving]  = useState(false)
-  const playerPosRef      = useRef(PLAYER_START)
-  const greetCooldownRef  = useRef({})
-  const movingTimerRef    = useRef(null)
-  const charPositionsRef  = useRef({ ...HOME_POSITIONS })
-  const selectedCharRef   = useRef(null)
-  const introPhaseRef     = useRef('typing')
-  const chatInputFocused  = useRef(false)
-  const activeKeysRef     = useRef(new Set())
-  const dpadDirRef        = useRef(null)
-  const rafRef            = useRef(null)
-  const missionStateRef   = useRef({ ...EMPTY_MISSION_STATE })
-  const sharedLogRef      = useRef([])
-  const relayInFlightRef  = useRef(new Set())
+  const [playerPos, setPlayerPos] = useState(PLAYER_START);
+  const [isPlayerMoving, setIsPlayerMoving] = useState(false);
+  const playerPosRef = useRef(PLAYER_START);
+  const greetCooldownRef = useRef({});
+  const movingTimerRef = useRef(null);
+  const charPositionsRef = useRef({ ...HOME_POSITIONS });
+  const selectedCharRef = useRef(null);
+  const introPhaseRef = useRef("typing");
+  const chatInputFocused = useRef(false);
+  const activeKeysRef = useRef(new Set());
+  const dpadDirRef = useRef(null);
+  const rafRef = useRef(null);
+  const missionStateRef = useRef({ ...EMPTY_MISSION_STATE });
+  const sharedLogRef = useRef([]);
+  const relayInFlightRef = useRef(new Set());
 
-  introPhaseRef.current = introPhase
+  introPhaseRef.current = introPhase;
 
-  const chatEndRef        = useRef(null)
-  const alertRef          = useRef(isAlert)
-  alertRef.current        = isAlert
-  const audioCtxRef       = useRef(null)
-  const audioRef          = useRef(null)
-  const mediaRecorderRef  = useRef(null)
-  const chunksRef         = useRef([])
-  const firedEventsRef    = useRef(new Set())
-  const crisisEventsRef   = useRef(new Set())
-  const alertStartTimeRef = useRef(null)
-  const touchStartXRef    = useRef(null)
-  const broadcastTimerRef = useRef(null)
-  const missionTimeRef    = useRef(0)
-  const cameraYawRef      = useRef(Math.PI)
-  missionTimeRef.current  = missionTime
+  const chatEndRef = useRef(null);
+  const alertRef = useRef(isAlert);
+  alertRef.current = isAlert;
+  const audioCtxRef = useRef(null);
+  const audioRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const firedEventsRef = useRef(new Set());
+  const crisisEventsRef = useRef(new Set());
+  const alertStartTimeRef = useRef(null);
+  const touchStartXRef = useRef(null);
+  const broadcastTimerRef = useRef(null);
+  const missionTimeRef = useRef(0);
+  const cameraYawRef = useRef(Math.PI);
+  missionTimeRef.current = missionTime;
 
   // Keep refs in sync
-  useEffect(() => { charPositionsRef.current = charPositions }, [charPositions])
-  useEffect(() => { selectedCharRef.current  = selectedChar  }, [selectedChar])
-  useEffect(() => { missionStateRef.current  = missionState  }, [missionState])
-  useEffect(() => { sharedLogRef.current     = sharedLog     }, [sharedLog])
+  useEffect(() => {
+    charPositionsRef.current = charPositions;
+  }, [charPositions]);
+  useEffect(() => {
+    selectedCharRef.current = selectedChar;
+  }, [selectedChar]);
+  useEffect(() => {
+    missionStateRef.current = missionState;
+  }, [missionState]);
+  useEffect(() => {
+    sharedLogRef.current = sharedLog;
+  }, [sharedLog]);
 
-  const missionMet = () => 55.92 + missionTimeRef.current / 3600
+  const missionMet = () => 55.92 + missionTimeRef.current / 3600;
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [history])
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [history]);
 
   // ── Intro typewriter ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (introPhase !== 'typing') return
-    let i = 0
+    if (introPhase !== "typing") return;
+    let i = 0;
     const iv = setInterval(() => {
-      i += 2
-      setIntroText(INTRO_FULL.slice(0, i))
-      if (i >= INTRO_FULL.length) clearInterval(iv)
-    }, 20)
-    return () => clearInterval(iv)
-  }, [introPhase])
+      i += 2;
+      setIntroText(INTRO_FULL.slice(0, i));
+      if (i >= INTRO_FULL.length) clearInterval(iv);
+    }, 20);
+    return () => clearInterval(iv);
+  }, [introPhase]);
 
   // ── Main timer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const timer = setInterval(() => {
-      const spd = clockSpeedRef.current
-      setMissionTime(t => t + spd)
+      const spd = clockSpeedRef.current;
+      setMissionTime((t) => t + spd);
       if (alertRef.current) {
-        setO2(v => Math.max(0, v - 0.08 * spd))
-        setPower(v => Math.max(0, v - 0.12 * spd))
+        setO2((v) => Math.max(0, v - 0.08 * spd));
+        setPower((v) => Math.max(0, v - 0.12 * spd));
       }
-      setTelemetry(t => ({
-        alt:  Math.max(0, t.alt - (Math.random() * 0.8 + 0.2) * spd),
-        vel:  alertRef.current ? Math.min(t.vel + Math.random() * 0.002 * spd, 2.1) : t.vel + (Math.random() - 0.6) * 0.001,
-        co2:  alertRef.current ? Math.min(t.co2 + 0.018 * spd, 15.0) : Math.max(t.co2 - 0.001, 2.4),
-        temp: alertRef.current ? Math.max(t.temp - 0.04 * spd, 4.0) : Math.min(t.temp + 0.01, 21.5),
-        batt: alertRef.current ? Math.max(t.batt - 0.025 * spd, 0) : Math.min(t.batt + 0.001, 29.5),
-      }))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [])
+      setTelemetry((t) => ({
+        alt: Math.max(0, t.alt - (Math.random() * 0.8 + 0.2) * spd),
+        vel: alertRef.current
+          ? Math.min(t.vel + Math.random() * 0.002 * spd, 2.1)
+          : t.vel + (Math.random() - 0.6) * 0.001,
+        co2: alertRef.current
+          ? Math.min(t.co2 + 0.018 * spd, 15.0)
+          : Math.max(t.co2 - 0.001, 2.4),
+        temp: alertRef.current
+          ? Math.max(t.temp - 0.04 * spd, 4.0)
+          : Math.min(t.temp + 0.01, 21.5),
+        batt: alertRef.current
+          ? Math.max(t.batt - 0.025 * spd, 0)
+          : Math.min(t.batt + 0.001, 29.5),
+      }));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // ── Scripted events ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (introPhase !== 'done') return
-    MISSION_EVENTS.forEach(ev => {
+    if (introPhase !== "done") return;
+    MISSION_EVENTS.forEach((ev) => {
       if (!firedEventsRef.current.has(ev.id) && missionTime >= ev.at) {
-        firedEventsRef.current.add(ev.id)
-        showBroadcast(ev.charKey, ev.text)
-        if (ev.decision) setTimeout(() => setPendingDecision(ev.decision), 6000)
+        firedEventsRef.current.add(ev.id);
+        showBroadcast(ev.charKey, ev.text);
+        if (ev.decision)
+          setTimeout(() => setPendingDecision(ev.decision), 6000);
       }
-    })
-  }, [missionTime, introPhase])
+    });
+  }, [missionTime, introPhase]);
 
   useEffect(() => {
-    if (!isAlert) return
-    if (alertStartTimeRef.current === null) { alertStartTimeRef.current = missionTimeRef.current; return }
-    const elapsed = missionTime - alertStartTimeRef.current
-    CRISIS_EVENTS.forEach(ev => {
+    if (!isAlert) return;
+    if (alertStartTimeRef.current === null) {
+      alertStartTimeRef.current = missionTimeRef.current;
+      return;
+    }
+    const elapsed = missionTime - alertStartTimeRef.current;
+    CRISIS_EVENTS.forEach((ev) => {
       if (!crisisEventsRef.current.has(ev.id) && elapsed >= ev.at) {
-        crisisEventsRef.current.add(ev.id)
-        showBroadcast(ev.charKey, ev.text)
-        if (ev.evalTrigger) setTimeout(() => runEvaluation(ev.evalTrigger.type, ev.evalTrigger.params, ev.evalTrigger.label), 4000)
+        crisisEventsRef.current.add(ev.id);
+        showBroadcast(ev.charKey, ev.text);
+        if (ev.evalTrigger)
+          setTimeout(
+            () =>
+              runEvaluation(
+                ev.evalTrigger.type,
+                ev.evalTrigger.params,
+                ev.evalTrigger.label,
+              ),
+            4000,
+          );
       }
-    })
-  }, [missionTime, isAlert])
+    });
+  }, [missionTime, isAlert]);
 
   // ── Action detection — synchronous, returns nextState immediately ──────────
   const detectAndApplyActions = useCallback((text, speaker, currentState) => {
-    const t = text.toLowerCase()
-    const updates = { ...currentState }
-    let changed = false
+    const t = text.toLowerCase();
+    const updates = { ...currentState };
+    let changed = false;
 
-    if (!updates.powerReduced &&
-        (t.includes('12 amp') || t.includes('shed load') ||
-         (t.includes('non-essential') && (t.includes('down') || t.includes('cut') || t.includes('shed') || t.includes('off'))))) {
-      updates.powerReduced = true; changed = true
+    if (
+      !updates.powerReduced &&
+      (t.includes("12 amp") ||
+        t.includes("shed load") ||
+        (t.includes("non-essential") &&
+          (t.includes("down") ||
+            t.includes("cut") ||
+            t.includes("shed") ||
+            t.includes("off"))))
+    ) {
+      updates.powerReduced = true;
+      changed = true;
     }
-    if (!updates.co2Fixed &&
-        t.includes('co2') && (t.includes('fix') || t.includes('mailbox') || t.includes('working') || t.includes('done'))) {
-      updates.co2Fixed = true; changed = true
+    if (
+      !updates.co2Fixed &&
+      t.includes("co2") &&
+      (t.includes("fix") ||
+        t.includes("mailbox") ||
+        t.includes("working") ||
+        t.includes("done"))
+    ) {
+      updates.co2Fixed = true;
+      changed = true;
     }
-    if (!updates.burnExecuted &&
-        (t.includes('pc+2') || t.includes('burn')) &&
-        (t.includes('execut') || t.includes('complet') || t.includes('done') || t.includes('fired'))) {
-      updates.burnExecuted = true; changed = true
+    if (
+      !updates.burnExecuted &&
+      (t.includes("pc+2") || t.includes("burn")) &&
+      (t.includes("execut") ||
+        t.includes("complet") ||
+        t.includes("done") ||
+        t.includes("fired"))
+    ) {
+      updates.burnExecuted = true;
+      changed = true;
     }
-    if (!updates.emergencyDeclared &&
-        t.includes('emergency') && (t.includes('declar') || t.includes('contingency'))) {
-      updates.emergencyDeclared = true; changed = true
+    if (
+      !updates.emergencyDeclared &&
+      t.includes("emergency") &&
+      (t.includes("declar") || t.includes("contingency"))
+    ) {
+      updates.emergencyDeclared = true;
+      changed = true;
     }
-    if (!updates.lemActivated &&
-        (t.includes('lunar module') || t.includes('aquarius')) &&
-        (t.includes('activ') || t.includes('lifeboat') || t.includes('transfer'))) {
-      updates.lemActivated = true; changed = true
+    if (
+      !updates.lemActivated &&
+      (t.includes("lunar module") || t.includes("aquarius")) &&
+      (t.includes("activ") || t.includes("lifeboat") || t.includes("transfer"))
+    ) {
+      updates.lemActivated = true;
+      changed = true;
     }
-    if (!updates.navigationTransferred &&
-        t.includes('navigation') && t.includes('transfer')) {
-      updates.navigationTransferred = true; changed = true
+    if (
+      !updates.navigationTransferred &&
+      t.includes("navigation") &&
+      t.includes("transfer")
+    ) {
+      updates.navigationTransferred = true;
+      changed = true;
     }
-    if (!updates.freeReturn &&
-        (t.includes('free-return') || (t.includes('free') && t.includes('return')))) {
-      updates.freeReturn = true; changed = true
+    if (
+      !updates.freeReturn &&
+      (t.includes("free-return") ||
+        (t.includes("free") && t.includes("return")))
+    ) {
+      updates.freeReturn = true;
+      changed = true;
     }
 
     // Detect Kranz directives to engineers — use unique IDs to prevent duplicates
-    if (speaker === 'KRANZ' || speaker === 'GROUND') {
-      const dirMatch = text.match(/(FIDO|GUIDO|TELMU|RETRO|DOC)[,\s]+([^.!?\n]{10,80})/i)
+    if (speaker === "KRANZ" || speaker === "GROUND") {
+      const dirMatch = text.match(
+        /(FIDO|GUIDO|TELMU|RETRO|DOC)[,\s]+([^.!?\n]{10,80})/i,
+      );
       if (dirMatch) {
-        const dirText = `Kranz to ${dirMatch[1].toUpperCase()}: "${dirMatch[2].trim()}"`
-        const dirId   = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-        const existing = updates.pendingDirectives || []
-        const isDup = existing.slice(-3).some(d => d.text.slice(0, 30) === dirText.slice(0, 30))
+        const dirText = `Kranz to ${dirMatch[1].toUpperCase()}: "${dirMatch[2].trim()}"`;
+        const dirId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const existing = updates.pendingDirectives || [];
+        const isDup = existing
+          .slice(-3)
+          .some((d) => d.text.slice(0, 30) === dirText.slice(0, 30));
         if (!isDup) {
-          updates.pendingDirectives = [...existing.slice(-4), { id: dirId, text: dirText }]
-          changed = true
+          updates.pendingDirectives = [
+            ...existing.slice(-4),
+            { id: dirId, text: dirText },
+          ];
+          changed = true;
         }
       }
     }
 
     if (changed) {
-      setMissionState(updates)
-      missionStateRef.current = updates
+      setMissionState(updates);
+      missionStateRef.current = updates;
     }
 
-    return updates  // return synchronously — caller sends this exact object
-  }, [])
+    return updates; // return synchronously — caller sends this exact object
+  }, []);
 
   // ── Auto-relay: Kranz directs engineer → they respond automatically ────────
   const autoRelay = useCallback(async (charKey, directive, directiveId) => {
-    if (relayInFlightRef.current.has(directiveId)) return
-    relayInFlightRef.current.add(directiveId)
+    if (relayInFlightRef.current.has(directiveId)) return;
+    relayInFlightRef.current.add(directiveId);
 
-    const prompt = `Flight Director just ordered you: "${directive}" — respond directly with your current status and data.`
+    const prompt = `Flight Director just ordered you: "${directive}" — respond directly with your current status and data.`;
 
     try {
       const res = await fetch(`${API}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           character: charKey,
           message: prompt,
           history: [],
-          shared_context: sharedLogRef.current.slice(-10).map(e => ({ char: e.char, text: e.text })),
+          shared_context: sharedLogRef.current
+            .slice(-10)
+            .map((e) => ({ char: e.char, text: e.text })),
           session_id: SESSION_ID,
           mission_met: missionMet(),
           mission_state: missionStateRef.current,
         }),
-      })
-      const data = await res.json()
-      const reply = data.response
+      });
+      const data = await res.json();
+      const reply = data.response;
 
       // showBroadcast writes to sharedLog — don't duplicate
-      showBroadcast(charKey, reply)
-      speakTTS(reply, charKey)
+      showBroadcast(charKey, reply);
+      speakTTS(reply, charKey);
 
       // Detect any state changes in relay response
-      detectAndApplyActions(reply, charKey, missionStateRef.current)
+      detectAndApplyActions(reply, charKey, missionStateRef.current);
 
       // Clear this directive from pending
-      setMissionState(prev => ({
+      setMissionState((prev) => ({
         ...prev,
-        pendingDirectives: (prev.pendingDirectives || []).filter(d => d.id !== directiveId)
-      }))
+        pendingDirectives: (prev.pendingDirectives || []).filter(
+          (d) => d.id !== directiveId,
+        ),
+      }));
     } catch (e) {
-      console.error('Auto-relay failed:', e)
+      console.error("Auto-relay failed:", e);
     } finally {
-      setTimeout(() => relayInFlightRef.current.delete(directiveId), 15000)
+      setTimeout(() => relayInFlightRef.current.delete(directiveId), 15000);
     }
-  }, [])
+  }, []);
 
   // ── Movement ───────────────────────────────────────────────────────────────
   const stepPlayer = useCallback((dir) => {
-    const [px, , pz] = playerPosRef.current
-    const yaw = cameraYawRef.current
-    const fwdX = Math.sin(yaw), fwdZ = Math.cos(yaw)
-    const rgtX = Math.cos(yaw), rgtZ = -Math.sin(yaw)
-    const rawX = (-dir[0] * rgtX - dir[1] * fwdX)
-    const rawZ = (-dir[0] * rgtZ - dir[1] * fwdZ)
-    const len  = Math.sqrt(rawX * rawX + rawZ * rawZ) || 1
-    const nx   = px + (rawX / len) * MOVE_SPEED
-    const nz   = pz + (rawZ / len) * MOVE_SPEED
-    let moved = false
-    if (isWalkable(nx, nz)) { playerPosRef.current = [nx, 0, nz]; moved = true }
-    else if (isWalkable(nx, pz)) { playerPosRef.current = [nx, 0, pz]; moved = true }
-    else if (isWalkable(px, nz)) { playerPosRef.current = [px, 0, nz]; moved = true }
-    if (moved) {
-      setPlayerPos([...playerPosRef.current])
-      setIsPlayerMoving(true)
-      clearTimeout(movingTimerRef.current)
-      movingTimerRef.current = setTimeout(() => setIsPlayerMoving(false), 150)
-      checkProximity(playerPosRef.current[0], playerPosRef.current[2])
+    const [px, , pz] = playerPosRef.current;
+    const yaw = cameraYawRef.current;
+    const fwdX = Math.sin(yaw),
+      fwdZ = Math.cos(yaw);
+    const rgtX = Math.cos(yaw),
+      rgtZ = -Math.sin(yaw);
+    const rawX = -dir[0] * rgtX - dir[1] * fwdX;
+    const rawZ = -dir[0] * rgtZ - dir[1] * fwdZ;
+    const len = Math.sqrt(rawX * rawX + rawZ * rawZ) || 1;
+    const nx = px + (rawX / len) * MOVE_SPEED;
+    const nz = pz + (rawZ / len) * MOVE_SPEED;
+    let moved = false;
+    if (isWalkable(nx, nz)) {
+      playerPosRef.current = [nx, 0, nz];
+      moved = true;
+    } else if (isWalkable(nx, pz)) {
+      playerPosRef.current = [nx, 0, pz];
+      moved = true;
+    } else if (isWalkable(px, nz)) {
+      playerPosRef.current = [px, 0, nz];
+      moved = true;
     }
-  }, [])
+    if (moved) {
+      setPlayerPos([...playerPosRef.current]);
+      setIsPlayerMoving(true);
+      clearTimeout(movingTimerRef.current);
+      movingTimerRef.current = setTimeout(() => setIsPlayerMoving(false), 150);
+      checkProximity(playerPosRef.current[0], playerPosRef.current[2]);
+    }
+  }, []);
 
   useEffect(() => {
     const KEY_DIR = {
-      w: [0,-1], arrowup: [0,-1], s: [0,1], arrowdown: [0,1],
-      a: [-1,0], arrowleft: [-1,0], d: [1,0], arrowright: [1,0],
-    }
+      w: [0, -1],
+      arrowup: [0, -1],
+      s: [0, 1],
+      arrowdown: [0, 1],
+      a: [-1, 0],
+      arrowleft: [-1, 0],
+      d: [1, 0],
+      arrowright: [1, 0],
+    };
     const onKeyDown = (e) => {
-      if (introPhaseRef.current !== 'done' || chatInputFocused.current) return
-      const key = e.key.toLowerCase()
-      if (KEY_DIR[key]) { e.preventDefault(); activeKeysRef.current.add(key) }
-    }
-    const onKeyUp = (e) => { activeKeysRef.current.delete(e.key.toLowerCase()) }
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup',   onKeyUp)
+      if (introPhaseRef.current !== "done" || chatInputFocused.current) return;
+      const key = e.key.toLowerCase();
+      if (KEY_DIR[key]) {
+        e.preventDefault();
+        activeKeysRef.current.add(key);
+      }
+    };
+    const onKeyUp = (e) => {
+      activeKeysRef.current.delete(e.key.toLowerCase());
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
     const loop = () => {
-      rafRef.current = requestAnimationFrame(loop)
-      if (introPhaseRef.current !== 'done') return
-      let dx = 0, dz = 0
-      for (const k of activeKeysRef.current) { const d = KEY_DIR[k]; if (d) { dx += d[0]; dz += d[1] } }
-      if (dpadDirRef.current) { dx += dpadDirRef.current[0]; dz += dpadDirRef.current[1] }
-      if (dx !== 0 || dz !== 0) stepPlayer([dx, dz])
-    }
-    rafRef.current = requestAnimationFrame(loop)
-    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); cancelAnimationFrame(rafRef.current) }
-  }, [stepPlayer])
+      rafRef.current = requestAnimationFrame(loop);
+      if (introPhaseRef.current !== "done") return;
+      let dx = 0,
+        dz = 0;
+      for (const k of activeKeysRef.current) {
+        const d = KEY_DIR[k];
+        if (d) {
+          dx += d[0];
+          dz += d[1];
+        }
+      }
+      if (dpadDirRef.current) {
+        dx += dpadDirRef.current[0];
+        dz += dpadDirRef.current[1];
+      }
+      if (dx !== 0 || dz !== 0) stepPlayer([dx, dz]);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [stepPlayer]);
 
   // ── Proximity detection ────────────────────────────────────────────────────
   const checkProximity = useCallback((px, pz) => {
-    const now = Date.now()
+    const now = Date.now();
     for (const [charKey, [cx, , cz]] of Object.entries(HOME_POSITIONS)) {
-      const dist = Math.sqrt((px - cx) ** 2 + (pz - cz) ** 2)
+      const dist = Math.sqrt((px - cx) ** 2 + (pz - cz) ** 2);
       if (dist < PROXIMITY_DIST) {
-        const lastGreet = greetCooldownRef.current[charKey] || 0
-        if (now - lastGreet < 12000) return
-        greetCooldownRef.current[charKey] = now
-        const char = { name: charKey, ...CHARACTER_ROLES[charKey] }
-        setSelectedChar(char)
-        selectedCharRef.current = char
-        setHistory([])
-        setMessage('')
-        setTimeout(() => triggerAutoGreet(char, PROXIMITY_GREETINGS[charKey] || 'Yes?'), 350)
-        break
+        const lastGreet = greetCooldownRef.current[charKey] || 0;
+        if (now - lastGreet < 12000) return;
+        greetCooldownRef.current[charKey] = now;
+        const char = { name: charKey, ...CHARACTER_ROLES[charKey] };
+        setSelectedChar(char);
+        selectedCharRef.current = char;
+        setHistory([]);
+        setMessage("");
+        setTimeout(
+          () => triggerAutoGreet(char, PROXIMITY_GREETINGS[charKey] || "Yes?"),
+          350,
+        );
+        break;
       }
     }
-  }, [])
+  }, []);
 
   const triggerAutoGreet = useCallback((char, greetingText) => {
-    const msgTime = missionTimeRef.current
-    setHistory([{ role: 'assistant', content: greetingText, time: msgTime }])
-    setSharedLog(prev => {
-      const next = [...prev.slice(-19), { char: char.name, text: greetingText, time: msgTime }]
-      sharedLogRef.current = next
-      return next
-    })
-    speakTTS(greetingText, char.name)
-  }, [])
+    const msgTime = missionTimeRef.current;
+    setHistory([{ role: "assistant", content: greetingText, time: msgTime }]);
+    setSharedLog((prev) => {
+      const next = [
+        ...prev.slice(-19),
+        { char: char.name, text: greetingText, time: msgTime },
+      ];
+      sharedLogRef.current = next;
+      return next;
+    });
+    speakTTS(greetingText, char.name);
+  }, []);
 
-  const startDpad = useCallback((dir) => { dpadDirRef.current = dir  }, [])
-  const stopDpad  = useCallback(()    => { dpadDirRef.current = null }, [])
+  const startDpad = useCallback((dir) => {
+    dpadDirRef.current = dir;
+  }, []);
+  const stopDpad = useCallback(() => {
+    dpadDirRef.current = null;
+  }, []);
 
   // ── Character movement ─────────────────────────────────────────────────────
   const moveCharacter = useCallback((charKey, crisis = false) => {
-    setCharPositions(prev => ({
+    setCharPositions((prev) => ({
       ...prev,
-      [charKey]: crisis ? (CRISIS_POSITIONS[charKey] ?? HOME_POSITIONS[charKey]) : HOME_POSITIONS[charKey],
-    }))
-  }, [])
+      [charKey]: crisis
+        ? (CRISIS_POSITIONS[charKey] ?? HOME_POSITIONS[charKey])
+        : HOME_POSITIONS[charKey],
+    }));
+  }, []);
 
-  const resetCharacterPositions = useCallback(() => setCharPositions({ ...HOME_POSITIONS }), [])
+  const resetCharacterPositions = useCallback(
+    () => setCharPositions({ ...HOME_POSITIONS }),
+    [],
+  );
 
   // ── Broadcast ──────────────────────────────────────────────────────────────
   const showBroadcast = useCallback((charKey, text) => {
-    if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
-    setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || '#4af' })
-    setLastBroadcast({ char: CHAR_LABELS[charKey] || charKey, text })
-    setSharedLog(prev => {
-      const next = [...prev.slice(-19), { char: charKey, text, time: missionTimeRef.current }]
-      sharedLogRef.current = next
-      return next
-    })
-    broadcastTimerRef.current = setTimeout(() => setBroadcast(null), 8000)
-  }, [])
+    if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current);
+    setBroadcast({ charKey, text, color: CHAR_COLORS[charKey] || "#4af" });
+    setLastBroadcast({ char: CHAR_LABELS[charKey] || charKey, text });
+    setSharedLog((prev) => {
+      const next = [
+        ...prev.slice(-19),
+        { char: charKey, text, time: missionTimeRef.current },
+      ];
+      sharedLogRef.current = next;
+      return next;
+    });
+    broadcastTimerRef.current = setTimeout(() => setBroadcast(null), 8000);
+  }, []);
 
   // ── Physics evaluation ─────────────────────────────────────────────────────
-  const runEvaluation = useCallback(async (type, params, label = '') => {
+  const runEvaluation = useCallback(async (type, params, label = "") => {
     try {
       const res = await fetch(`${API}/evaluate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command_type: type, params, session_id: SESSION_ID, mission_met: missionMet() }),
-      })
-      const data = await res.json()
-      setEvalResult({ ...data, label, timestamp: missionTimeRef.current })
-      if (data.timeline_state?.branch) setTimelineBranch(data.timeline_state.branch)
-      const evalChar = type === 'burn' ? 'ENG-4' : 'ENG-3'
-      const shortOutcome = data.outcome?.split('.')[0] || ''
-      if (shortOutcome) speakTTS(shortOutcome, evalChar)
-    } catch (e) { console.error('Evaluate error:', e) }
-  }, [])
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          command_type: type,
+          params,
+          session_id: SESSION_ID,
+          mission_met: missionMet(),
+        }),
+      });
+      const data = await res.json();
+      setEvalResult({ ...data, label, timestamp: missionTimeRef.current });
+      if (data.timeline_state?.branch)
+        setTimelineBranch(data.timeline_state.branch);
+      const evalChar = type === "burn" ? "ENG-4" : "ENG-3";
+      const shortOutcome = data.outcome?.split(".")[0] || "";
+      if (shortOutcome) speakTTS(shortOutcome, evalChar);
+    } catch (e) {
+      console.error("Evaluate error:", e);
+    }
+  }, []);
 
   // ── Ambient audio ──────────────────────────────────────────────────────────
   const initAudio = useCallback(() => {
-    if (audioCtxRef.current) return
+    if (audioCtxRef.current) return;
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext
-      if (!AudioContext) return
-      const ctx = new AudioContext()
-      audioCtxRef.current = ctx
-      const bufSize = ctx.sampleRate * 3
-      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate)
-      const data = buf.getChannelData(0)
-      for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1
-      const noise = ctx.createBufferSource(); noise.buffer = buf; noise.loop = true
-      const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 350; nf.Q.value = 0.4
-      const ng = ctx.createGain(); ng.gain.value = 0.035
-      noise.connect(nf); nf.connect(ng); ng.connect(ctx.destination); noise.start()
-      const hum = ctx.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 60
-      const hg = ctx.createGain(); hg.gain.value = 0.005
-      hum.connect(hg); hg.connect(ctx.destination); hum.start()
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const bufSize = ctx.sampleRate * 3;
+      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = ctx.createBufferSource();
+      noise.buffer = buf;
+      noise.loop = true;
+      const nf = ctx.createBiquadFilter();
+      nf.type = "bandpass";
+      nf.frequency.value = 350;
+      nf.Q.value = 0.4;
+      const ng = ctx.createGain();
+      ng.gain.value = 0.035;
+      noise.connect(nf);
+      nf.connect(ng);
+      ng.connect(ctx.destination);
+      noise.start();
+      const hum = ctx.createOscillator();
+      hum.type = "sawtooth";
+      hum.frequency.value = 60;
+      const hg = ctx.createGain();
+      hg.gain.value = 0.005;
+      hum.connect(hg);
+      hg.connect(ctx.destination);
+      hum.start();
     } catch {}
-  }, [])
+  }, []);
 
   const playAlarm = useCallback(() => {
-    const ctx = audioCtxRef.current; if (!ctx) return
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
     try {
-      const osc = ctx.createOscillator(); const gain = ctx.createGain()
-      osc.type = 'square'; osc.connect(gain); gain.connect(ctx.destination)
-      gain.gain.value = 0; osc.start()
-      const t = ctx.currentTime
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      gain.gain.value = 0;
+      osc.start();
+      const t = ctx.currentTime;
       for (let i = 0; i < 6; i++) {
-        osc.frequency.setValueAtTime(i % 2 === 0 ? 880 : 660, t + i * 0.35)
-        gain.gain.setValueAtTime(0.12, t + i * 0.35)
-        gain.gain.setValueAtTime(0, t + i * 0.35 + 0.28)
+        osc.frequency.setValueAtTime(i % 2 === 0 ? 880 : 660, t + i * 0.35);
+        gain.gain.setValueAtTime(0.12, t + i * 0.35);
+        gain.gain.setValueAtTime(0, t + i * 0.35 + 0.28);
       }
-      osc.stop(t + 6 * 0.35)
+      osc.stop(t + 6 * 0.35);
     } catch {}
-  }, [])
+  }, []);
 
   const formatMissionTime = (secs) => {
-    const base = 55 * 3600 + 55 * 60 + 20
-    const total = base + secs
-    const h = String(Math.floor(total / 3600)).padStart(2, '0')
-    const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
-    const s = String(total % 60).padStart(2, '0')
-    return `T+${h}:${m}:${s}`
-  }
+    const base = 55 * 3600 + 55 * 60 + 20;
+    const total = base + secs;
+    const h = String(Math.floor(total / 3600)).padStart(2, "0");
+    const m = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+    const s = String(total % 60).padStart(2, "0");
+    return `T+${h}:${m}:${s}`;
+  };
 
   // ── TTS ────────────────────────────────────────────────────────────────────
   const stopAudio = () => {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; audioRef.current = null }
-    setTalkingChar(null)
-  }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    setTalkingChar(null);
+  };
 
   const speakTTS = async (text, charName) => {
-    stopAudio()
-    setTalkingChar(charName)
+    stopAudio();
+    setTalkingChar(charName);
     try {
       const res = await fetch(`${API}/tts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, character: charName }),
-      })
-      if (!res.ok) throw new Error('TTS failed')
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audio.volume = 1.0
-      audioRef.current = audio
-      await audio.play()
-      audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setTalkingChar(null) }
-      audio.onerror = () => setTalkingChar(null)
-    } catch (e) { console.error('TTS error:', e); setTalkingChar(null) }
-  }
+      });
+      if (!res.ok) throw new Error("TTS failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.volume = 1.0;
+      audioRef.current = audio;
+      await audio.play();
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        audioRef.current = null;
+        setTalkingChar(null);
+      };
+      audio.onerror = () => setTalkingChar(null);
+    } catch (e) {
+      console.error("TTS error:", e);
+      setTalkingChar(null);
+    }
+  };
 
-  // ── Voice input ────────────────────────────────────────────────────────────
+  // ─ }� Voice input ────────────────────────────────────────────────────────────
   const startRecording = async () => {
-    if (recording || transcribing) return
+    if (recording || transcribing) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
-      const recorder = new MediaRecorder(stream, { mimeType })
-      chunksRef.current = []
-      recorder.ondataavailable = (e) => chunksRef.current.push(e.data)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
       recorder.onstop = async () => {
-        setTranscribing(true)
-        const blob = new Blob(chunksRef.current, { type: mimeType })
-        const formData = new FormData()
-        formData.append('audio', blob, mimeType === 'audio/webm' ? 'audio.webm' : 'audio.mp4')
+        setTranscribing(true);
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const formData = new FormData();
+        formData.append(
+          "audio",
+          blob,
+          mimeType === "audio/webm" ? "audio.webm" : "audio.mp4",
+        );
         try {
-          const res = await fetch(`${API}/transcribe`, { method: 'POST', body: formData })
-          const data = await res.json()
+          const res = await fetch(`${API}/transcribe`, {
+            method: "POST",
+            body: formData,
+          });
+          const data = await res.json();
           if (data.text?.trim()) {
-            setMessage(data.text.trim())
-            setTimeout(() => document.getElementById('send-btn')?.click(), 300)
+            setMessage(data.text.trim());
+            setTimeout(() => document.getElementById("send-btn")?.click(), 300);
           }
-        } catch (e) { console.error('Transcribe error:', e) }
-        setTranscribing(false)
-        stream.getTracks().forEach(t => t.stop())
-      }
-      recorder.start()
-      mediaRecorderRef.current = recorder
-      setRecording(true)
-    } catch { alert('Microphone access denied.') }
-  }
+        } catch (e) {
+          console.error("Transcribe error:", e);
+        }
+        setTranscribing(false);
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecording(true);
+    } catch {
+      alert("Microphone access denied.");
+    }
+  };
 
   const stopRecording = () => {
-    if (!recording) return
-    mediaRecorderRef.current?.stop()
-    setRecording(false)
-  }
+    if (!recording) return;
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+  };
 
   const handleSelect = (char) => {
-    stopAudio(); setSelectedChar(char); selectedCharRef.current = char; setHistory([]); setMessage('')
-  }
+    stopAudio();
+    setSelectedChar(char);
+    selectedCharRef.current = char;
+    setHistory([]);
+    setMessage("");
+  };
 
-  const changeClockSpeed = useCallback((spd) => { clockSpeedRef.current = spd; setClockSpeed(spd) }, [])
+  const changeClockSpeed = useCallback((spd) => {
+    clockSpeedRef.current = spd;
+    setClockSpeed(spd);
+  }, []);
 
   const handleCrisisToggle = () => {
-    const next = !isAlert
-    setIsAlert(next)
-    setSelectedChar(null)
+    const next = !isAlert;
+    setIsAlert(next);
+    setSelectedChar(null);
     if (next) {
-      setO2(82); setPower(74)
-      alertStartTimeRef.current = missionTimeRef.current
-      playAlarm()
+      setO2(82);
+      setPower(74);
+      alertStartTimeRef.current = missionTimeRef.current;
+      playAlarm();
     } else {
-      setO2(100); setPower(100)
-      alertStartTimeRef.current = null
-      crisisEventsRef.current = new Set()
+      setO2(100);
+      setPower(100);
+      alertStartTimeRef.current = null;
+      crisisEventsRef.current = new Set();
     }
-  }
+  };
 
   const handleDecision = (option) => {
-    setPendingDecision(null)
-    const logEntry = { char: 'FLIGHT', text: `DECISION: ${option}`, time: missionTimeRef.current }
-    setSharedLog(prev => { const next = [...prev.slice(-19), logEntry]; sharedLogRef.current = next; return next })
-    if (option === 'DECLARE EMERGENCY') {
-      setIsAlert(true); setO2(82); setPower(74)
-      alertStartTimeRef.current = missionTimeRef.current
-      playAlarm()
-      showBroadcast('KRANZ', "This is now a contingency. All stations — declaring an emergency. Failure is not an option.")
+    setPendingDecision(null);
+    const logEntry = {
+      char: "FLIGHT",
+      text: `DECISION: ${option}`,
+      time: missionTimeRef.current,
+    };
+    setSharedLog((prev) => {
+      const next = [...prev.slice(-19), logEntry];
+      sharedLogRef.current = next;
+      return next;
+    });
+    if (option === "DECLARE EMERGENCY") {
+      setIsAlert(true);
+      setO2(82);
+      setPower(74);
+      alertStartTimeRef.current = missionTimeRef.current;
+      playAlarm();
+      showBroadcast(
+        "KRANZ",
+        "This is now a contingency. All stations — declaring an emergency. Failure is not an option.",
+      );
     } else {
-      showBroadcast('KRANZ', "Copy. All stations, stand by. Continue monitoring. I want answers in five minutes.")
+      showBroadcast(
+        "KRANZ",
+        "Copy. All stations, stand by. Continue monitoring. I want answers in five minutes.",
+      );
       setTimeout(() => {
-        showBroadcast('ENG-3', "Flight — can't hold anymore. Complete loss of SM O2 tank 2. Not recoverable.")
-        setTimeout(() => setPendingDecision({
-          question: "Tank 2 confirmed gone. Crew at risk. Your call —",
-          options: ["DECLARE EMERGENCY", "CONTINUE ASSESSMENT"],
-        }), 6000)
-      }, 30000)
+        showBroadcast(
+          "ENG-3",
+          "Flight — can't hold anymore. Complete loss of SM O2 tank 2. Not recoverable.",
+        );
+        setTimeout(
+          () =>
+            setPendingDecision({
+              question: "Tank 2 confirmed gone. Crew at risk. Your call —",
+              options: ["DECLARE EMERGENCY", "CONTINUE ASSESSMENT"],
+            }),
+          6000,
+        );
+      }, 30000);
     }
-  }
+  };
 
   // ── Send message — core of the fix ────────────────────────────────────────
   const sendMessage = async (overrideMsg) => {
-    const char = selectedCharRef.current || selectedChar
-    const msg  = overrideMsg || message
-    if (!msg.trim() || loading || !char) return
-    stopAudio()
+    const char = selectedCharRef.current || selectedChar;
+    const msg = overrideMsg || message;
+    if (!msg.trim() || loading || !char) return;
+    stopAudio();
 
-    const msgTime    = missionTimeRef.current
-    const userMsg    = { role: 'user', content: msg, time: msgTime }
-    const newHistory = [...history, userMsg]
-    setHistory(newHistory)
+    const msgTime = missionTimeRef.current;
+    const userMsg = { role: "user", content: msg, time: msgTime };
+    const newHistory = [...history, userMsg];
+    setHistory(newHistory);
 
     // Update shared log ref synchronously
-    const newLog = [...sharedLogRef.current.slice(-19), { char: 'GROUND', text: msg, time: msgTime }]
-    sharedLogRef.current = newLog
-    setSharedLog(newLog)
-    setMessage('')
-    setLoading(true)
+    const newLog = [
+      ...sharedLogRef.current.slice(-19),
+      { char: "GROUND", text: msg, time: msgTime },
+    ];
+    sharedLogRef.current = newLog;
+    setSharedLog(newLog);
+    setMessage("");
+    setLoading(true);
 
     // Detect actions synchronously — get the exact updated state to send
-    const nextState = detectAndApplyActions(msg, char.name === 'KRANZ' ? 'KRANZ' : 'GROUND', missionStateRef.current)
+    const nextState = detectAndApplyActions(
+      msg,
+      char.name === "KRANZ" ? "KRANZ" : "GROUND",
+      missionStateRef.current,
+    );
 
     try {
       const res = await fetch(`${API}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           character: char.name,
           message: msg,
-          history: history.slice(-8).map(h => ({ role: h.role, content: h.content })),
-          shared_context: newLog.slice(-20).map(e => ({ char: e.char, text: e.text })),
+          history: history
+            .slice(-8)
+            .map((h) => ({ role: h.role, content: h.content })),
+          shared_context: newLog
+            .slice(-20)
+            .map((e) => ({ char: e.char, text: e.text })),
           session_id: SESSION_ID,
           mission_met: missionMet(),
-          mission_state: nextState,  // ← exact synchronous state, not stale
+          mission_state: nextState, // ← exact synchronous state, not stale
         }),
-      })
-      const data  = await res.json()
-      const reply = data.response
-      const replyTime = missionTimeRef.current
+      });
+      const data = await res.json();
+      const reply = data.response;
+      const replyTime = missionTimeRef.current;
 
-      setHistory([...newHistory, { role: 'assistant', content: reply, time: replyTime }])
+      setHistory([
+        ...newHistory,
+        { role: "assistant", content: reply, time: replyTime },
+      ]);
 
-      const replyLog = [...sharedLogRef.current.slice(-19), { char: char.name, text: reply, time: replyTime }]
-      sharedLogRef.current = replyLog
-      setSharedLog(replyLog)
-      setLastBroadcast({ char: CHAR_LABELS[char.name] || char.name, text: reply })
+      const replyLog = [
+        ...sharedLogRef.current.slice(-19),
+        { char: char.name, text: reply, time: replyTime },
+      ];
+      sharedLogRef.current = replyLog;
+      setSharedLog(replyLog);
+      setLastBroadcast({
+        char: CHAR_LABELS[char.name] || char.name,
+        text: reply,
+      });
 
       // Detect state changes in response
-      const finalState = detectAndApplyActions(reply, char.name, missionStateRef.current)
+      const finalState = detectAndApplyActions(
+        reply,
+        char.name,
+        missionStateRef.current,
+      );
 
       // If Kranz issued a directive, auto-relay to that engineer after 2.2s
-      if (char.name === 'KRANZ') {
-        const dirMatch = reply.match(/(FIDO|GUIDO|TELMU|RETRO|DOC)[,\s]+([^.!?\n]{10,80})/i)
+      if (char.name === "KRANZ") {
+        const dirMatch = reply.match(
+          /(FIDO|GUIDO|TELMU|RETRO|DOC)[,\s]+([^.!?\n]{10,80})/i,
+        );
         if (dirMatch) {
-          const targetKey = CHAR_MAP[dirMatch[1].toUpperCase()]
-          const dirId     = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-          if (targetKey) setTimeout(() => autoRelay(targetKey, dirMatch[2].trim(), dirId), 2200)
+          const targetKey = CHAR_MAP[dirMatch[1].toUpperCase()];
+          const dirId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          if (targetKey)
+            setTimeout(
+              () => autoRelay(targetKey, dirMatch[2].trim(), dirId),
+              2200,
+            );
         }
       }
 
-      speakTTS(reply, char.name)
+      speakTTS(reply, char.name);
     } catch {
-      setHistory([...newHistory, { role: 'assistant', content: '[COMMS FAILURE]', time: msgTime }])
+      setHistory([
+        ...newHistory,
+        { role: "assistant", content: "[COMMS FAILURE]", time: msgTime },
+      ]);
     }
-    setLoading(false)
-  }
+    setLoading(false);
+  };
 
   const exportTranscript = () => {
-    if (sharedLogRef.current.length === 0) return
-    const lines = [`APOLLO 13 MISSION TRANSCRIPT`, `Generated: ${formatMissionTime(missionTimeRef.current)}`, `Timeline: ${timelineBranch}`, `${'═'.repeat(42)}`, '']
-    sharedLogRef.current.forEach(e => { lines.push(`[${formatMissionTime(e.time)}] ${CHAR_LABELS[e.char] || e.char}`); lines.push(e.text); lines.push('') })
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = 'apollo13-transcript.txt'; a.click()
-    URL.revokeObjectURL(url)
-  }
+    if (sharedLogRef.current.length === 0) return;
+    const lines = [
+      `APOLLO 13 MISSION TRANSCRIPT`,
+      `Generated: ${formatMissionTime(missionTimeRef.current)}`,
+      `Timeline: ${timelineBranch}`,
+      `${"═".repeat(42)}`,
+      "",
+    ];
+    sharedLogRef.current.forEach((e) => {
+      lines.push(
+        `[${formatMissionTime(e.time)}] ${CHAR_LABELS[e.char] || e.char}`,
+      );
+      lines.push(e.text);
+      lines.push("");
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "apollo13-transcript.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
-  const gaugeColor = (val) => val > 60 ? '#4af0c0' : val > 30 ? '#ffaa00' : '#ff4400'
-  const telColor   = (key, val) => {
-    if (key === 'co2'  && val > 7)  return '#ff4400'
-    if (key === 'co2'  && val > 4)  return '#ffaa00'
-    if (key === 'temp' && val < 10) return '#4af'
-    if (key === 'temp' && val < 15) return '#ffaa00'
-    if (key === 'batt' && val < 20) return '#ff4400'
-    if (key === 'batt' && val < 25) return '#ffaa00'
-    return '#4af0c0'
-  }
+  const gaugeColor = (val) =>
+    val > 60 ? "#4af0c0" : val > 30 ? "#ffaa00" : "#ff4400";
+  const telColor = (key, val) => {
+    if (key === "co2" && val > 7) return "#ff4400";
+    if (key === "co2" && val > 4) return "#ffaa00";
+    if (key === "temp" && val < 10) return "#4af";
+    if (key === "temp" && val < 15) return "#ffaa00";
+    if (key === "batt" && val < 20) return "#ff4400";
+    if (key === "batt" && val < 25) return "#ffaa00";
+    return "#4af0c0";
+  };
 
-  const BRANCH_COLORS = { A: '#4af0c0', B: '#ff4400', C: '#ff8800', D: '#ff4400' }
-  const BRANCH_LABELS = { A: 'NOMINAL', B: 'SKIP-OUT · CREW LOST', C: 'CO2/BURNUP', D: 'POWER FAILURE' }
+  const BRANCH_COLORS = {
+    A: "#4af0c0",
+    B: "#ff4400",
+    C: "#ff8800",
+    D: "#ff4400",
+  };
+  const BRANCH_LABELS = {
+    A: "NOMINAL",
+    B: "SKIP-OUT · CREW LOST",
+    C: "CO2/BURNUP",
+    D: "POWER FAILURE",
+  };
 
   const handleGlobalClick = () => {
-    if (introPhase !== 'done') { setIntroPhase('done'); initAudio() }
-  }
+    if (introPhase !== "done") {
+      setIntroPhase("done");
+      initAudio();
+    }
+  };
 
-  const onChatTouchStart = (e) => { touchStartXRef.current = e.touches[0].clientX }
-  const onChatTouchEnd   = (e) => {
-    if (touchStartXRef.current === null) return
-    const dx = e.changedTouches[0].clientX - touchStartXRef.current
-    if (dx < -60) { stopAudio(); setSelectedChar(null) }
-    touchStartXRef.current = null
-  }
+  const onChatTouchStart = (e) => {
+    touchStartXRef.current = e.touches[0].clientX;
+  };
+  const onChatTouchEnd = (e) => {
+    if (touchStartXRef.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartXRef.current;
+    if (dx < -60) {
+      stopAudio();
+      setSelectedChar(null);
+    }
+    touchStartXRef.current = null;
+  };
 
-  const micStatus = recording ? 'RELEASE' : transcribing ? '...' : '🎙'
+  const micStatus = recording ? "RELEASE" : transcribing ? "..." : "🎙";
 
   return (
-    <div className="app-root" style={{ background: isAlert ? '#0d0000' : '#0a0a1a' }} onClick={handleGlobalClick}>
-      <Canvas camera={{ position: [0, 1.75, 6], fov: 75, near: 0.05, far: 120 }} shadows>
-        <ambientLight intensity={isAlert ? 0.55 : 0.90} color={isAlert ? '#ffccaa' : '#cce4ff'} />
-        <directionalLight position={[0, 10, 6]}  intensity={isAlert ? 0.8 : 1.4} castShadow color={isAlert ? '#ffddcc' : '#ffffff'} />
-        <directionalLight position={[0, 6, -10]} intensity={isAlert ? 0.3 : 0.5} color={isAlert ? '#ff6633' : '#aaccff'} />
-        <directionalLight position={[-8, 5, 0]}  intensity={0.25} color={isAlert ? '#ff5500' : '#99bbdd'} />
-        <directionalLight position={[ 8, 5, 0]}  intensity={0.25} color={isAlert ? '#ff5500' : '#99bbdd'} />
+    <div
+      className="app-root"
+      style={{ background: isAlert ? "#0d0000" : "#0a0a1a" }}
+      onClick={handleGlobalClick}
+    >
+      <Canvas
+        camera={{ position: [0, 1.75, 6], fov: 75, near: 0.05, far: 120 }}
+        shadows
+      >
+        <ambientLight
+          intensity={isAlert ? 0.55 : 0.9}
+          color={isAlert ? "#ffccaa" : "#cce4ff"}
+        />
+        <directionalLight
+          position={[0, 10, 6]}
+          intensity={isAlert ? 0.8 : 1.4}
+          castShadow
+          color={isAlert ? "#ffddcc" : "#ffffff"}
+        />
+        <directionalLight
+          position={[0, 6, -10]}
+          intensity={isAlert ? 0.3 : 0.5}
+          color={isAlert ? "#ff6633" : "#aaccff"}
+        />
+        <directionalLight
+          position={[-8, 5, 0]}
+          intensity={0.25}
+          color={isAlert ? "#ff5500" : "#99bbdd"}
+        />
+        <directionalLight
+          position={[8, 5, 0]}
+          intensity={0.25}
+          color={isAlert ? "#ff5500" : "#99bbdd"}
+        />
         <World
           isAlert={isAlert}
           onCharacterSelect={handleSelect}
@@ -862,73 +1332,165 @@ export default function App() {
         <FirstPersonCamera playerPos={playerPos} yawRef={cameraYawRef} />
       </Canvas>
 
-      {introPhase !== 'done' && (
+      {introPhase !== "done" && (
         <div className="intro-overlay" onClick={handleGlobalClick}>
-          <pre className="intro-text">{introText}<span className="intro-cursor">█</span></pre>
+          <pre className="intro-text">
+            {introText}
+            <span className="intro-cursor">█</span>
+          </pre>
         </div>
       )}
 
-      <div className="topbar" style={{ borderBottom: `1px solid ${isAlert ? '#ff4400' : '#1a3a6a'}` }}>
-        <span className="topbar-title" style={{ color: isAlert ? '#ff4400' : '#4af' }}>CHRONICLES AI · APOLLO 13</span>
+      <div
+        className="topbar"
+        style={{ borderBottom: `1px solid ${isAlert ? "#ff4400" : "#1a3a6a"}` }}
+      >
+        <span
+          className="topbar-title"
+          style={{ color: isAlert ? "#ff4400" : "#4af" }}
+        >
+          CHRONICLES AI · APOLLO 13
+        </span>
         <span className="topbar-clock">{formatMissionTime(missionTime)}</span>
         <div className="topbar-actions">
           <div className="speed-controls">
-            {[1, 5, 30, 60].map(spd => (
-              <button key={spd} className="speed-btn"
-                onClick={e => { e.stopPropagation(); changeClockSpeed(spd) }}
-                style={{ background: clockSpeed === spd ? '#1a3a6a' : 'transparent', color: clockSpeed === spd ? '#4af' : '#444', borderColor: clockSpeed === spd ? '#4af' : '#222' }}>
+            {[1, 5, 30, 60].map((spd) => (
+              <button
+                key={spd}
+                className="speed-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  changeClockSpeed(spd);
+                }}
+                style={{
+                  background: clockSpeed === spd ? "#1a3a6a" : "transparent",
+                  color: clockSpeed === spd ? "#4af" : "#444",
+                  borderColor: clockSpeed === spd ? "#4af" : "#222",
+                }}
+              >
                 {spd}×
               </button>
             ))}
           </div>
-          <span className="timeline-badge" style={{ color: BRANCH_COLORS[timelineBranch] }}>{BRANCH_LABELS[timelineBranch]}</span>
+          <span
+            className="timeline-badge"
+            style={{ color: BRANCH_COLORS[timelineBranch] }}
+          >
+            {BRANCH_LABELS[timelineBranch]}
+          </span>
           {sharedLog.length > 0 && (
-            <button className="export-btn" onClick={e => { e.stopPropagation(); exportTranscript() }}>⬇ LOG</button>
+            <button
+              className="export-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                exportTranscript();
+              }}
+            >
+              ⬇ LOG
+            </button>
           )}
-          <button className="crisis-btn" onClick={e => { e.stopPropagation(); handleCrisisToggle() }}
-            style={{ background: isAlert ? '#ff4400' : '#1a3a6a' }}>
-            {isAlert ? '⚠ CRISIS' : 'TRIGGER CRISIS'}
+          <button
+            className="crisis-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCrisisToggle();
+            }}
+            style={{ background: isAlert ? "#ff4400" : "#1a3a6a" }}
+          >
+            {isAlert ? "⚠ CRISIS" : "TRIGGER CRISIS"}
           </button>
         </div>
       </div>
 
       {broadcast && (
-        <div className="broadcast" style={{ borderLeft: `3px solid ${broadcast.color}` }}>
-          <span className="broadcast-who" style={{ color: broadcast.color }}>{CHAR_LABELS[broadcast.charKey] || broadcast.charKey}</span>
+        <div
+          className="broadcast"
+          style={{ borderLeft: `3px solid ${broadcast.color}` }}
+        >
+          <span className="broadcast-who" style={{ color: broadcast.color }}>
+            {CHAR_LABELS[broadcast.charKey] || broadcast.charKey}
+          </span>
           <span className="broadcast-text">{broadcast.text}</span>
         </div>
       )}
 
-      <div className="hud" style={{ border: `1px solid ${isAlert ? '#ff4400' : '#1a3a6a'}` }}>
+      <div
+        className="hud"
+        style={{ border: `1px solid ${isAlert ? "#ff4400" : "#1a3a6a"}` }}
+      >
         <div className="hud-label">SYSTEMS STATUS</div>
-        {[{ label: 'O₂ SUPPLY', value: o2 }, { label: 'POWER', value: power }].map(({ label, value }) => (
+        {[
+          { label: "O₂ SUPPLY", value: o2 },
+          { label: "POWER", value: power },
+        ].map(({ label, value }) => (
           <div key={label} className="hud-row">
             <div className="hud-row-header">
-              <span style={{ color: '#555' }}>{label}</span>
-              <span style={{ color: gaugeColor(value) }}>{value.toFixed(0)}%</span>
+              <span style={{ color: "#555" }}>{label}</span>
+              <span style={{ color: gaugeColor(value) }}>
+                {value.toFixed(0)}%
+              </span>
             </div>
             <div className="hud-bar-bg">
-              <div className="hud-bar-fill" style={{ width: `${value}%`, background: gaugeColor(value) }} />
+              <div
+                className="hud-bar-fill"
+                style={{ width: `${value}%`, background: gaugeColor(value) }}
+              />
             </div>
           </div>
         ))}
         <div className="hud-crew">
-          CREW: {isAlert ? <span style={{ color: '#ff8800' }}>⚠ AT RISK</span> : <span style={{ color: '#4af0c0' }}>NOMINAL</span>}
+          CREW:{" "}
+          {isAlert ? (
+            <span style={{ color: "#ff8800" }}>⚠ AT RISK</span>
+          ) : (
+            <span style={{ color: "#4af0c0" }}>NOMINAL</span>
+          )}
         </div>
       </div>
 
-      <div className="telemetry" style={{ border: `1px solid ${isAlert ? '#ff4400' : '#1a3a6a'}` }}>
+      <div
+        className="telemetry"
+        style={{ border: `1px solid ${isAlert ? "#ff4400" : "#1a3a6a"}` }}
+      >
         <div className="hud-label">TELEMETRY</div>
         {[
-          { key: 'alt',  label: 'ALT',  val: telemetry.alt.toFixed(0),  unit: 'km'   },
-          { key: 'vel',  label: 'VEL',  val: telemetry.vel.toFixed(3),  unit: 'km/s' },
-          { key: 'co2',  label: 'CO₂',  val: telemetry.co2.toFixed(1),  unit: 'mmHg' },
-          { key: 'temp', label: 'TEMP', val: telemetry.temp.toFixed(1), unit: '°C'   },
-          { key: 'batt', label: 'BATT', val: telemetry.batt.toFixed(1), unit: 'V'    },
+          {
+            key: "alt",
+            label: "ALT",
+            val: telemetry.alt.toFixed(0),
+            unit: "km",
+          },
+          {
+            key: "vel",
+            label: "VEL",
+            val: telemetry.vel.toFixed(3),
+            unit: "km/s",
+          },
+          {
+            key: "co2",
+            label: "CO₂",
+            val: telemetry.co2.toFixed(1),
+            unit: "mmHg",
+          },
+          {
+            key: "temp",
+            label: "TEMP",
+            val: telemetry.temp.toFixed(1),
+            unit: "°C",
+          },
+          {
+            key: "batt",
+            label: "BATT",
+            val: telemetry.batt.toFixed(1),
+            unit: "V",
+          },
         ].map(({ key, label, val, unit }) => (
           <div key={key} className="telem-row">
             <span className="telem-label">{label}</span>
-            <span className="telem-val" style={{ color: telColor(key, parseFloat(val)) }}>
+            <span
+              className="telem-val"
+              style={{ color: telColor(key, parseFloat(val)) }}
+            >
               {val} <span className="telem-unit">{unit}</span>
             </span>
           </div>
@@ -936,34 +1498,59 @@ export default function App() {
       </div>
 
       {evalResult && (
-        <div className="eval-panel" style={{ borderColor: evalResult.viable ? '#4af0c0' : '#ff4400' }}
-          onClick={e => e.stopPropagation()}>
+        <div
+          className="eval-panel"
+          style={{ borderColor: evalResult.viable ? "#4af0c0" : "#ff4400" }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="eval-header">
-            <span className="eval-label">{evalResult.label || 'PHYSICS EVALUATION'}</span>
-            <button className="btn-close" onClick={() => setEvalResult(null)}>✕</button>
+            <span className="eval-label">
+              {evalResult.label || "PHYSICS EVALUATION"}
+            </span>
+            <button className="btn-close" onClick={() => setEvalResult(null)}>
+              ✕
+            </button>
           </div>
-          <div className="eval-timeline" style={{ color: evalResult.viable ? '#4af0c0' : '#ff4400' }}>{evalResult.timeline}</div>
+          <div
+            className="eval-timeline"
+            style={{ color: evalResult.viable ? "#4af0c0" : "#ff4400" }}
+          >
+            {evalResult.timeline}
+          </div>
           <div className="eval-outcome">{evalResult.outcome}</div>
           <div className="eval-physics">{evalResult.physics_note}</div>
           {evalResult.transcript_context?.[0] && (
             <div className="eval-transcript">
-              <span style={{ color: '#666' }}>ACTUAL LOG [{evalResult.transcript_context[0].met.toFixed(2)}h]: </span>
-              <span style={{ color: '#aaa' }}>"{evalResult.transcript_context[0].line}"</span>
+              <span style={{ color: "#666" }}>
+                ACTUAL LOG [{evalResult.transcript_context[0].met.toFixed(2)}
+                h]:{" "}
+              </span>
+              <span style={{ color: "#aaa" }}>
+                "{evalResult.transcript_context[0].line}"
+              </span>
             </div>
           )}
         </div>
       )}
 
       {pendingDecision && (
-        <div className="decision-overlay" onClick={e => e.stopPropagation()}>
-          <div className="decision-box" style={{ borderColor: isAlert ? '#ff4400' : '#ff8800' }}>
+        <div className="decision-overlay" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="decision-box"
+            style={{ borderColor: isAlert ? "#ff4400" : "#ff8800" }}
+          >
             <div className="decision-icon">⚠</div>
             <div className="decision-q">{pendingDecision.question}</div>
             <div className="decision-opts">
-              {pendingDecision.options.map(opt => (
-                <button key={opt} className="decision-btn"
-                  style={{ borderColor: opt.includes('DECLARE') ? '#ff4400' : '#4af' }}
-                  onClick={() => handleDecision(opt)}>
+              {pendingDecision.options.map((opt) => (
+                <button
+                  key={opt}
+                  className="decision-btn"
+                  style={{
+                    borderColor: opt.includes("DECLARE") ? "#ff4400" : "#4af",
+                  }}
+                  onClick={() => handleDecision(opt)}
+                >
                   {opt}
                 </button>
               ))}
@@ -973,52 +1560,94 @@ export default function App() {
       )}
 
       {selectedChar && (
-        <div className="chat-panel"
+        <div
+          className="chat-panel"
           style={{
-            border: `1px solid ${talkingChar === selectedChar.name ? '#ffff00' : (selectedChar.color || '#4af')}`,
-            boxShadow: talkingChar === selectedChar.name ? '0 0 16px rgba(255,255,0,0.15)' : 'none',
+            border: `1px solid ${talkingChar === selectedChar.name ? "#ffff00" : selectedChar.color || "#4af"}`,
+            boxShadow:
+              talkingChar === selectedChar.name
+                ? "0 0 16px rgba(255,255,0,0.15)"
+                : "none",
           }}
           onTouchStart={onChatTouchStart}
           onTouchEnd={onChatTouchEnd}
-          onClick={e => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="chat-header">
             <div>
               <div className="chat-char-name-row">
-                <span style={{ color: selectedChar.color || '#4af' }} className="chat-char-name">{selectedChar.name}</span>
-                {talkingChar === selectedChar.name && <span className="speaking-badge">◉ SPEAKING</span>}
+                <span
+                  style={{ color: selectedChar.color || "#4af" }}
+                  className="chat-char-name"
+                >
+                  {selectedChar.name}
+                </span>
+                {talkingChar === selectedChar.name && (
+                  <span className="speaking-badge">◉ SPEAKING</span>
+                )}
               </div>
               <div className="chat-char-title">{selectedChar.title}</div>
             </div>
             <div className="chat-header-btns">
-              {talkingChar && <button className="btn-stop" onClick={stopAudio}>⏹</button>}
-              <button className="btn-close" onClick={() => { stopAudio(); setSelectedChar(null) }}>✕</button>
+              {talkingChar && (
+                <button className="btn-stop" onClick={stopAudio}>
+                  ⏹
+                </button>
+              )}
+              <button
+                className="btn-close"
+                onClick={() => {
+                  stopAudio();
+                  setSelectedChar(null);
+                }}
+              >
+                ✕
+              </button>
             </div>
           </div>
 
           <div className="chat-bio">{selectedChar.bio}</div>
 
           <div className="chat-history">
-            {history.length === 0 && <div className="chat-empty">— walk up to talk —</div>}
+            {history.length === 0 && (
+              <div className="chat-empty">— walk up to talk —</div>
+            )}
             {history.map((h, i) => (
               <div key={i} className={`chat-bubble-wrap ${h.role}`}>
-                {h.time !== undefined && <div className="msg-time">{formatMissionTime(h.time)}</div>}
-                <div className={`chat-bubble ${h.role}`} style={{
-                  background: h.role === 'user' ? '#0f2a4a' : '#0a1a0a',
-                  border: `1px solid ${h.role === 'user' ? '#1a4a8a' : '#1a3a1a'}`,
-                  color: h.role === 'user' ? '#7af' : '#9f9',
-                }}>{h.content}</div>
+                {h.time !== undefined && (
+                  <div className="msg-time">{formatMissionTime(h.time)}</div>
+                )}
+                <div
+                  className={`chat-bubble ${h.role}`}
+                  style={{
+                    background: h.role === "user" ? "#0f2a4a" : "#0a1a0a",
+                    border: `1px solid ${h.role === "user" ? "#1a4a8a" : "#1a3a1a"}`,
+                    color: h.role === "user" ? "#7af" : "#9f9",
+                  }}
+                >
+                  {h.content}
+                </div>
               </div>
             ))}
-            {loading && <div className="chat-loading">{selectedChar.name} is transmitting...</div>}
+            {loading && (
+              <div className="chat-loading">
+                {selectedChar.name} is transmitting...
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
           {history.length <= 1 && (
             <div className="quick-prompts">
               <div className="quick-label">QUICK COMMS</div>
-              {(QUICK_PROMPTS[selectedChar.name] || []).map(q => (
-                <button key={q} className="quick-btn" onClick={() => sendMessage(q)}>» {q}</button>
+              {(QUICK_PROMPTS[selectedChar.name] || []).map((q) => (
+                <button
+                  key={q}
+                  className="quick-btn"
+                  onClick={() => sendMessage(q)}
+                >
+                  » {q}
+                </button>
               ))}
             </div>
           )}
@@ -1027,43 +1656,123 @@ export default function App() {
             <input
               className="chat-input"
               value={message}
-              onChange={e => setMessage(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && sendMessage()}
-              onFocus={() => { chatInputFocused.current = true }}
-              onBlur={() => { chatInputFocused.current = false }}
-              placeholder={transcribing ? 'Transcribing...' : recording ? 'Recording...' : 'Respond...'}
-              style={{ border: `1px solid ${recording ? '#ff4400' : (selectedChar.color || '#1a3a6a')}` }}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+              onFocus={() => {
+                chatInputFocused.current = true;
+              }}
+              onBlur={() => {
+                chatInputFocused.current = false;
+              }}
+              placeholder={
+                transcribing
+                  ? "Transcribing..."
+                  : recording
+                    ? "Recording..."
+                    : "Respond..."
+              }
+              style={{
+                border: `1px solid ${recording ? "#ff4400" : selectedChar.color || "#1a3a6a"}`,
+              }}
             />
-            <button className="btn-mic"
-              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); startRecording() }}
-              onPointerUp={e => { e.preventDefault(); stopRecording() }}
+            <button
+              className="btn-mic"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                startRecording();
+              }}
+              onPointerUp={(e) => {
+                e.preventDefault();
+                stopRecording();
+              }}
               onPointerLeave={stopRecording}
               disabled={transcribing || loading}
               style={{
-                background: recording ? '#3a0000' : transcribing ? '#111' : '#0a1a0a',
-                color: recording ? '#ff4400' : transcribing ? '#333' : '#6a6',
-                border: `1px solid ${recording ? '#ff4400' : '#1a4a1a'}`,
-                animation: recording ? 'pulse 1s infinite' : 'none',
-                fontSize: 12, minWidth: 40,
-              }}>{micStatus}</button>
-            <button id="send-btn" className="btn-send" onClick={() => sendMessage()} disabled={loading}
-              style={{ background: loading ? '#111' : '#0f3460', color: loading ? '#333' : '#fff' }}>▶</button>
+                background: recording
+                  ? "#3a0000"
+                  : transcribing
+                    ? "#111"
+                    : "#0a1a0a",
+                color: recording ? "#ff4400" : transcribing ? "#333" : "#6a6",
+                border: `1px solid ${recording ? "#ff4400" : "#1a4a1a"}`,
+                animation: recording ? "pulse 1s infinite" : "none",
+                fontSize: 12,
+                minWidth: 40,
+              }}
+            >
+              {micStatus}
+            </button>
+            <button
+              id="send-btn"
+              className="btn-send"
+              onClick={() => sendMessage()}
+              disabled={loading}
+              style={{
+                background: loading ? "#111" : "#0f3460",
+                color: loading ? "#333" : "#fff",
+              }}
+            >
+              ▶
+            </button>
           </div>
         </div>
       )}
 
-      {introPhase === 'done' && (
-        <div className="dpad" onClick={e => e.stopPropagation()}>
-          <button className="dpad-btn dpad-up"    onPointerDown={e => { e.preventDefault(); startDpad([0,-1]) }} onPointerUp={stopDpad} onPointerLeave={stopDpad}>▲</button>
-          <button className="dpad-btn dpad-left"  onPointerDown={e => { e.preventDefault(); startDpad([-1,0]) }} onPointerUp={stopDpad} onPointerLeave={stopDpad}>◀</button>
+      {introPhase === "done" && (
+        <div className="dpad" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="dpad-btn dpad-up"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startDpad([0, -1]);
+            }}
+            onPointerUp={stopDpad}
+            onPointerLeave={stopDpad}
+          >
+            ▲
+          </button>
+          <button
+            className="dpad-btn dpad-left"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startDpad([-1, 0]);
+            }}
+            onPointerUp={stopDpad}
+            onPointerLeave={stopDpad}
+          >
+            ◀
+          </button>
           <button className="dpad-btn dpad-center" />
-          <button className="dpad-btn dpad-right" onPointerDown={e => { e.preventDefault(); startDpad([1,0])  }} onPointerUp={stopDpad} onPointerLeave={stopDpad}>▶</button>
-          <button className="dpad-btn dpad-down"  onPointerDown={e => { e.preventDefault(); startDpad([0,1])  }} onPointerUp={stopDpad} onPointerLeave={stopDpad}>▼</button>
+          <button
+            className="dpad-btn dpad-right"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startDpad([1, 0]);
+            }}
+            onPointerUp={stopDpad}
+            onPointerLeave={stopDpad}
+          >
+            ▶
+          </button>
+          <button
+            className="dpad-btn dpad-down"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startDpad([0, 1]);
+            }}
+            onPointerUp={stopDpad}
+            onPointerLeave={stopDpad}
+          >
+            ▼
+          </button>
         </div>
       )}
 
-      {!selectedChar && introPhase === 'done' && (
-        <div className="bottom-hint">WASD · D-PAD TO MOVE · DRAG TO LOOK AROUND</div>
+      {!selectedChar && introPhase === "done" && (
+        <div className="bottom-hint">
+          WASD · D-PAD TO MOVE · DRAG TO LOOK AROUND
+        </div>
       )}
 
       <style>{`
@@ -1165,5 +1874,5 @@ export default function App() {
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
       `}</style>
     </div>
-  )
+  );
 }
