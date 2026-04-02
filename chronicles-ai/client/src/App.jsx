@@ -346,6 +346,17 @@ const CRISIS_EVENTS = [
   },
 ];
 
+const TIME_JUMP_OPTIONS = [
+  { label: "— JUMP TO TIME —", value: null },
+  { label: "T+55:55 · Pre-Explosion", value: 0, crisis: false },
+  { label: "T+55:57 · Tank 2 Alarm", value: 120, crisis: false },
+  { label: "T+56:02 · Emergency Declared", value: 420, crisis: true },
+  { label: "T+57:00 · LEM Activation", value: 3900, crisis: true },
+  { label: "T+79:27 · PC+2 Burn Window", value: 84720, crisis: true },
+  { label: "T+87:00 · CO2 Crisis", value: 113400, crisis: true },
+  { label: "T+105:00 · Re-entry Approach", value: 177600, crisis: true },
+];
+
 const INTRO_LINES = [
   "APRIL 13, 1970  ·  21:08 CST",
   "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -1026,6 +1037,77 @@ const detectAndApplyActions = useCallback((text, speaker, currentState) => {
     clockSpeedRef.current = spd;
     setClockSpeed(spd);
   }, []);
+  const jumpToTime = useCallback((option) => {
+    if (option.value === null) return;
+    const newTime = option.value;
+
+    // Update time
+    setMissionTime(newTime);
+    missionTimeRef.current = newTime;
+
+    // Trigger crisis mode if this moment requires it
+    if (option.crisis && !alertRef.current) {
+      setIsAlert(true);
+      alertRef.current = true;
+      setO2(82);
+      setPower(74);
+      alertStartTimeRef.current = newTime;
+      playAlarm();
+    } else if (!option.crisis && alertRef.current) {
+      setIsAlert(false);
+      alertRef.current = false;
+      setO2(100);
+      setPower(100);
+      alertStartTimeRef.current = null;
+      crisisEventsRef.current = new Set();
+    }
+
+    // Recalculate telemetry to match the new time
+    const met = 55.92 + newTime / 3600;
+    setTelemetry({
+      alt: Math.max(0, 199340 - met * 420),
+      vel: option.crisis ? Math.min(1.53 + (met - 55.92) * 0.008, 2.1) : 1.53,
+      co2: option.crisis ? Math.min(2.5 + (newTime - 420) * 0.00004, 14.0) : 2.5,
+      temp: option.crisis ? Math.max(21.0 - (newTime - 420) * 0.000035, 4.5) : 21.0,
+      batt: option.crisis ? Math.max(29.5 - (newTime - 420) * 0.00008, 4.0) : 29.5,
+    });
+
+    // Fire all scripted mission events that should have already happened
+    MISSION_EVENTS.forEach((ev) => {
+      if (newTime >= ev.at && !firedEventsRef.current.has(ev.id)) {
+        firedEventsRef.current.add(ev.id);
+      }
+    });
+
+    // Fire all crisis events that should have already happened
+    if (option.crisis) {
+      const crisisElapsed = alertStartTimeRef.current !== null
+        ? newTime - alertStartTimeRef.current
+        : 0;
+      CRISIS_EVENTS.forEach((ev) => {
+        if (crisisElapsed >= ev.at && !crisisEventsRef.current.has(ev.id)) {
+          crisisEventsRef.current.add(ev.id);
+        }
+      });
+    }
+
+    // Broadcast an all-stations time-jump announcement
+    const jumpLabel = option.label.split("·")[1]?.trim() || option.label;
+    const announcementText = `All stations — timeline jump to ${jumpLabel}. Update your boards. Current mission time is now ${formatMissionTime(newTime)}. Acknowledge.`;
+    showBroadcast("KRANZ", announcementText);
+
+    // Each character reacts to the new time context after a short delay
+    const charReactions = [
+      { key: "ENG-3", delay: 3000, msg: `TELMU copies. Power at ${option.crisis ? "74%" : "100%"}, O2 at ${option.crisis ? "82%" : "100%"}. Boards updated.` },
+      { key: "ENG-1", delay: 5500, msg: `FIDO copies. Vehicle now at ${Math.max(0, Math.round(199340 - (55.92 + newTime / 3600) * 420)).toLocaleString()} klicks. Trajectory updated.` },
+      { key: "ENG-4", delay: 8000, msg: option.crisis ? `RETRO copies. Burn windows recalculated for current position.` : `RETRO copies. Re-entry nominal at current trajectory.` },
+    ];
+
+    charReactions.forEach(({ key, delay, msg }) => {
+      setTimeout(() => showBroadcast(key, msg), delay);
+    });
+  }, [showBroadcast, playAlarm, formatMissionTime]);
+
 
   const handleCrisisToggle = () => {
     const next = !isAlert;
@@ -1335,7 +1417,43 @@ const detectAndApplyActions = useCallback((text, speaker, currentState) => {
         </span>
         <span className="topbar-clock">{formatMissionTime(missionTime)}</span>
         <div className="topbar-actions">
-          <div className="speed-controls">
+          <select
+            className="char-select"
+            value={selectedChar?.name || ""}
+            onChange={(e) => {
+              e.stopPropagation();
+              const key = e.target.value;
+              if (!key) { stopAudio(); setSelectedChar(null); return; }
+              const char = { name: key, ...CHARACTER_ROLES[key] };
+              handleSelect(char);
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <option value="">— SELECT CREW —</option>
+            {Object.entries(CHARACTER_ROLES).map(([key, val]) => (
+              <option key={key} value={key}>{CHAR_LABELS[key] || key} · {val.title}</option>
+            ))}
+          </select>
+          <select
+            className="time-jump-select"
+            defaultValue=""
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              e.stopPropagation();
+              const idx = parseInt(e.target.value);
+              if (!isNaN(idx) && TIME_JUMP_OPTIONS[idx]) {
+                jumpToTime(TIME_JUMP_OPTIONS[idx]);
+              }
+              e.target.value = "";
+            }}
+          >
+            {TIME_JUMP_OPTIONS.map((opt, i) => (
+              <option key={i} value={i === 0 ? "" : i} disabled={i === 0}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+                    <div className="speed-controls">
             {[1, 5, 30, 60].map((spd) => (
               <button
                 key={spd}
@@ -1760,7 +1878,19 @@ const detectAndApplyActions = useCallback((text, speaker, currentState) => {
       <style>{`
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         .app-root { position: fixed; inset: 0; overflow: hidden; font-family: monospace; }
-
+        .char-select {
+          background: #0a0a1a;
+          color: #4af;
+          border: 1px solid #1a3a6a;
+          font-family: monospace;
+          font-size: 11px;
+          padding: 4px 8px;
+          border-radius: 3px;
+          cursor: pointer;
+          outline: none;
+        }
+        .char-select:focus { border-color: #4af; }
+        .char-select option { background: #0a0a1a; color: #4af; }
         .intro-overlay { position:absolute;inset:0;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;z-index:100;cursor:pointer; }
         .intro-text { color:#4af0c0;font-family:monospace;font-size:clamp(11px,2vw,16px);line-height:1.9;white-space:pre;text-shadow:0 0 12px rgba(74,240,192,0.5);text-align:left;max-width:90vw; }
         .intro-cursor { animation:blink 0.7s step-end infinite; }
@@ -1775,6 +1905,8 @@ const detectAndApplyActions = useCallback((text, speaker, currentState) => {
         .timeline-badge { font-size:clamp(8px,1.3vw,10px);letter-spacing:1px;white-space:nowrap; }
         .export-btn { color:#4af;background:transparent;border:1px solid #1a3a6a;border-radius:4px;padding:4px clamp(6px,1vw,10px);font-family:monospace;font-size:clamp(9px,1.4vw,11px);cursor:pointer;white-space:nowrap; }
         .crisis-btn { color:#fff;border:none;border-radius:4px;padding:5px clamp(8px,1.5vw,14px);font-family:monospace;font-size:clamp(9px,1.5vw,11px);letter-spacing:1px;cursor:pointer;white-space:nowrap; }
+        .time-jump-select { background:#0a0f1a;color:#4af;border:1px solid #1a3a6a;border-radius:4px;padding:4px 6px;font-family:monospace;font-size:clamp(9px,1.4vw,11px);cursor:pointer;max-width:clamp(100px,18vw,160px); }
+        .time-jump-select option { background:#0a0f1a;color:#ccc; }
 
         .broadcast { position:absolute;top:48px;left:50%;transform:translateX(-50%);width:clamp(280px,70vw,560px);background:rgba(5,5,20,0.95);border-radius:6px;padding:10px 14px;display:flex;gap:10px;align-items:flex-start;z-index:25;animation:slideDown 0.3s ease; }
         @keyframes slideDown { from{opacity:0;transform:translateX(-50%) translateY(-8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
