@@ -368,7 +368,7 @@ const INTRO_FULL = INTRO_LINES.join("\n");
 
 const PLAYER_START = [0, 0, 5];
 const PROXIMITY_DIST = 1.9;
-const MOVE_SPEED = 0.06;
+const MOVE_SPEED = 0.2;
 
 const EMPTY_MISSION_STATE = {
   powerReduced: false,
@@ -545,116 +545,97 @@ export default function App() {
     });
   }, [missionTime, isAlert]);
 
-  // ── Action detection — synchronous, returns nextState immediately ──────────
-  const detectAndApplyActions = useCallback((text, speaker, currentState) => {
-    const t = text.toLowerCase();
-    const updates = { ...currentState };
-    let changed = false;
+const detectAndApplyActions = useCallback((text, speaker, currentState) => {
+  const t = text.toLowerCase()
+  const updates = { ...currentState }
+  let changed = false
 
-    if (
-      !updates.powerReduced &&
-      (t.includes("12 amp") ||
-        t.includes("shed load") ||
-        (t.includes("non-essential") &&
-          (t.includes("down") ||
-            t.includes("cut") ||
-            t.includes("shed") ||
-            t.includes("off"))))
-    ) {
-      updates.powerReduced = true;
-      changed = true;
-    }
-    if (
-      !updates.co2Fixed &&
-      t.includes("co2") &&
-      (t.includes("fix") ||
-        t.includes("mailbox") ||
-        t.includes("working") ||
-        t.includes("done"))
-    ) {
-      updates.co2Fixed = true;
-      changed = true;
-    }
-    if (
-      !updates.burnExecuted &&
-      (t.includes("pc+2") || t.includes("burn")) &&
-      (t.includes("execut") ||
-        t.includes("complet") ||
-        t.includes("done") ||
-        t.includes("fired"))
-    ) {
-      updates.burnExecuted = true;
-      changed = true;
-    }
-    if (
-      !updates.emergencyDeclared &&
-      t.includes("emergency") &&
-      (t.includes("declar") || t.includes("contingency"))
-    ) {
-      updates.emergencyDeclared = true;
-      changed = true;
-    }
-    if (
-      !updates.lemActivated &&
-      (t.includes("lunar module") || t.includes("aquarius")) &&
-      (t.includes("activ") || t.includes("lifeboat") || t.includes("transfer"))
-    ) {
-      updates.lemActivated = true;
-      changed = true;
-    }
-    if (
-      !updates.navigationTransferred &&
-      t.includes("navigation") &&
-      t.includes("transfer")
-    ) {
-      updates.navigationTransferred = true;
-      changed = true;
-    }
-    if (
-      !updates.freeReturn &&
-      (t.includes("free-return") ||
-        (t.includes("free") && t.includes("return")))
-    ) {
-      updates.freeReturn = true;
-      changed = true;
-    }
+  // Power reduction — broader triggers
+  if (!updates.powerReduced && (
+    t.includes('12 amp') || t.includes('shed load') ||
+    t.includes('load shed') || t.includes('power down') ||
+    t.includes('powering down') || t.includes('powered down') ||
+    t.includes('cut power') || t.includes('cut load') ||
+    (t.includes('non-essential') && (t.includes('down') || t.includes('cut') || t.includes('shed') || t.includes('off'))) ||
+    (t.includes('essential') && (t.includes('shut') || t.includes('off') || t.includes('cut')))
+  )) { updates.powerReduced = true; changed = true }
 
-    // Detect Kranz directives to engineers — use unique IDs to prevent duplicates
-    if (speaker === "KRANZ" || speaker === "GROUND") {
-      const dirMatch = text.match(
-        /(FIDO|GUIDO|TELMU|RETRO|DOC)[,\s]+([^.!?\n]{10,80})/i,
-      );
-      if (dirMatch) {
-        const dirText = `Kranz to ${dirMatch[1].toUpperCase()}: "${dirMatch[2].trim()}"`;
-        const dirId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        const existing = updates.pendingDirectives || [];
-        const isDup = existing
-          .slice(-3)
-          .some((d) => d.text.slice(0, 30) === dirText.slice(0, 30));
-        if (!isDup) {
-          updates.pendingDirectives = [
-            ...existing.slice(-4),
-            { id: dirId, text: dirText },
-          ];
-          changed = true;
-        }
+  // CO2 fix — broader
+  if (!updates.co2Fixed && (
+    (t.includes('co2') && (t.includes('fix') || t.includes('mailbox') || t.includes('working') || t.includes('done') || t.includes('solved') || t.includes('under control'))) ||
+    t.includes('scrubber') && (t.includes('work') || t.includes('fix') || t.includes('done'))
+  )) { updates.co2Fixed = true; changed = true }
+
+  // Burn executed
+  if (!updates.burnExecuted && (
+    (t.includes('pc+2') || t.includes('burn')) &&
+    (t.includes('execut') || t.includes('complet') || t.includes('done') || t.includes('fired') || t.includes('complete'))
+  )) { updates.burnExecuted = true; changed = true }
+
+  // Emergency declared
+  if (!updates.emergencyDeclared && (
+    t.includes('emergency') && (t.includes('declar') || t.includes('contingency')) ||
+    t.includes('failure is not an option')
+  )) { updates.emergencyDeclared = true; changed = true }
+
+  // LEM activated
+  if (!updates.lemActivated && (
+    (t.includes('lunar module') || t.includes('aquarius') || t.includes('lem')) &&
+    (t.includes('activ') || t.includes('lifeboat') || t.includes('transfer') || t.includes('power') || t.includes('move'))
+  )) { updates.lemActivated = true; changed = true }
+
+  // Navigation transferred
+  if (!updates.navigationTransferred &&
+    t.includes('navigation') && t.includes('transfer')
+  ) { updates.navigationTransferred = true; changed = true }
+
+  // Free return
+  if (!updates.freeReturn && (
+    t.includes('free-return') || (t.includes('free') && t.includes('return')) ||
+    t.includes('return trajectory')
+  )) { updates.freeReturn = true; changed = true }
+
+  // Directive detection — fires for ANY mention of an engineer's name near an action
+  // Much broader than before — catches natural language too
+  if (speaker === 'KRANZ' || speaker === 'GROUND') {
+    const namePattern = /(FIDO|GUIDO|TELMU|RETRO|DOC)/i
+    const nameMatch = text.match(namePattern)
+    if (nameMatch) {
+      // Extract the sentence containing the engineer's name
+      const sentences = text.split(/[.!?\n]/)
+      const relevantSentence = sentences.find(s =>
+        s.toUpperCase().includes(nameMatch[1].toUpperCase())
+      ) || nameMatch[1]
+
+      const dirText = `Kranz to ${nameMatch[1].toUpperCase()}: "${relevantSentence.trim()}"`
+      const dirId   = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const existing = updates.pendingDirectives || []
+      const isDup = existing.slice(-3).some(d =>
+        d.text.slice(0, 30) === dirText.slice(0, 30)
+      )
+      if (!isDup) {
+        updates.pendingDirectives = [...existing.slice(-4), { id: dirId, text: dirText }]
+        changed = true
       }
     }
+  }
 
-    if (changed) {
-      setMissionState(updates);
-      missionStateRef.current = updates;
-    }
+  if (changed) {
+    setMissionState(updates)
+    missionStateRef.current = updates
+  }
 
-    return updates; // return synchronously — caller sends this exact object
-  }, []);
+  return updates
+}, [])
+
 
   // ── Auto-relay: Kranz directs engineer → they respond automatically ────────
   const autoRelay = useCallback(async (charKey, directive, directiveId) => {
     if (relayInFlightRef.current.has(directiveId)) return;
     relayInFlightRef.current.add(directiveId);
 
-    const prompt = `Flight Director just ordered you: "${directive}" — respond directly with your current status and data.`;
+    const prompt = `Someone in Mission Control just said this about you: "${directive}" — respond directly to Mission Control with your current status, data, and any critical updates. Be specific with numbers.`
+
 
     try {
       const res = await fetch(`${API}/chat`, {
@@ -1181,21 +1162,22 @@ export default function App() {
         missionStateRef.current,
       );
 
-      // If Kranz issued a directive, auto-relay to that engineer after 2.2s
-      if (char.name === "KRANZ") {
-        const dirMatch = reply.match(
-          /(FIDO|GUIDO|TELMU|RETRO|DOC)[,\s]+([^.!?\n]{10,80})/i,
-        );
-        if (dirMatch) {
-          const targetKey = CHAR_MAP[dirMatch[1].toUpperCase()];
-          const dirId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-          if (targetKey)
-            setTimeout(
-              () => autoRelay(targetKey, dirMatch[2].trim(), dirId),
-              2200,
-            );
-        }
+    // Auto-relay: fire whenever ANY character's reply mentions an engineer by name
+    // This catches "I'll have FIDO check" and "Let me get TELMU on that"
+    const engineerMentioned = reply.match(/(FIDO|GUIDO|TELMU|RETRO|DOC)/i)
+    if (engineerMentioned) {
+      const targetKey = CHAR_MAP[engineerMentioned[1].toUpperCase()]
+      // Don't relay if the speaker IS that engineer (avoid self-relay)
+      if (targetKey && targetKey !== char.name) {
+        const sentences = reply.split(/[.!?\n]/)
+        const context = sentences.find(s =>
+          s.toUpperCase().includes(engineerMentioned[1].toUpperCase())
+        ) || reply.slice(0, 80)
+        const dirId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        setTimeout(() => autoRelay(targetKey, context.trim(), dirId), 2200)
       }
+    }
+
 
       speakTTS(reply, char.name);
     } catch {
